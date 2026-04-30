@@ -14,18 +14,32 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet">
+
+  <!-- Firebase must load before Alpine -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      // ── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────
+      // apiKey: "AIzaSy...",
+      // authDomain: "cafe-xxxxx.firebaseapp.com",
+      // projectId: "cafe-xxxxx",
+      // storageBucket: "cafe-xxxxx.appspot.com",
+      // messagingSenderId: "123456789",
+      // appId: "1:123456789:web:abc123"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['IBM Plex Sans', 'system-ui', 'sans-serif'],
-          }
-        }
-      }
+      theme: { extend: { fontFamily: { sans: ['IBM Plex Sans', 'system-ui', 'sans-serif'] } } }
     }
   </script>
   <style>
@@ -35,527 +49,489 @@
     .nav-h { height: calc(4rem + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
   </style>
 </head>
-<body class="bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-50"
-      style="font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+<body class="bg-stone-50 text-stone-900" style="font-family: 'IBM Plex Sans', system-ui, sans-serif;">
 
 <div x-data="app()" x-init="init()" x-cloak>
 
-  <!-- ─── Header ──────────────────────────────────────────────── -->
-  <header class="sticky top-0 z-20 bg-stone-50 dark:bg-stone-950 border-b border-stone-200 dark:border-stone-800">
-    <div class="px-5 h-14 flex items-center justify-between">
-      <span class="text-[11px] font-medium tracking-widest uppercase">Cafe</span>
-      <button x-show="view === 'exercise'" @click="view = 'train'; exercise = null"
-        class="text-sm text-stone-900/50 dark:text-stone-50/50 min-h-[44px] pl-4">
-        ← voltar
-      </button>
-      <button x-show="view === 'tip'" @click="view = 'history'"
-        class="text-sm text-stone-900/30 dark:text-stone-50/30 min-h-[44px] pl-4">
-        pular →
-      </button>
-      <span x-show="view !== 'exercise' && view !== 'tip' && history.length > 0"
-        class="text-xs tabular-nums text-stone-900/30 dark:text-stone-50/30"
-        x-text="history.length + (history.length === 1 ? ' registro' : ' registros')">
-      </span>
-    </div>
-  </header>
+  <!-- ─── Loading ───────────────────────────────────────────────── -->
+  <div x-show="loading" class="min-h-screen flex flex-col items-center justify-center gap-4">
+    <div class="w-8 h-px bg-[#7C4B2A]"></div>
+    <p class="text-[11px] tracking-widest uppercase text-stone-900/30">Cafe</p>
+  </div>
 
-  <!-- ─── Views ───────────────────────────────────────────────── -->
-  <main class="pb-nav">
+  <!-- ─── Login ─────────────────────────────────────────────────── -->
+  <div x-show="!loading && !user" class="min-h-screen flex flex-col items-center justify-center px-8 py-16">
+    <div class="w-8 h-px bg-[#7C4B2A] mb-6"></div>
+    <h1 class="text-5xl font-light tracking-tight leading-none">Cafe</h1>
+    <p class="text-sm text-stone-900/40 mt-4 mb-14 tracking-wide">registre cada xícara</p>
+    <button @click="signIn()"
+      class="flex items-center gap-3 px-7 py-4 border border-stone-200 text-stone-900 text-sm font-normal min-h-[52px] transition-colors duration-150 hover:border-stone-900 active:scale-[0.98]">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Entrar com Google
+    </button>
+  </div>
 
-    <!-- ══════════════════ LOG ══════════════════ -->
-    <div x-show="view === 'log'" class="px-5 py-8 space-y-8">
+  <!-- ─── App ───────────────────────────────────────────────────── -->
+  <div x-show="!loading && user">
 
-      <div>
-        <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
-        <h1 class="text-4xl font-light tracking-tight leading-tight">Registrar<br>uma xícara</h1>
+    <!-- Header -->
+    <header class="sticky top-0 z-20 bg-stone-50 border-b border-stone-200">
+      <div class="px-5 h-14 flex items-center justify-between">
+        <span class="text-[11px] font-medium tracking-widest uppercase">Cafe</span>
+        <button x-show="view === 'exercise'" @click="view = 'train'; exercise = null"
+          class="text-sm text-stone-900/50 min-h-[44px] pl-4">← voltar</button>
+        <button x-show="view === 'tip'" @click="view = 'history'"
+          class="text-sm text-stone-900/30 min-h-[44px] pl-4">pular →</button>
+        <div x-show="view !== 'exercise' && view !== 'tip'" class="flex items-center gap-3">
+          <span class="text-xs text-stone-900/35" x-text="user ? user.name.split(' ')[0] : ''"></span>
+          <button @click="signOut()" class="text-[11px] text-stone-900/20 min-h-[44px]">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Views -->
+    <main class="pb-nav">
+
+      <!-- ══════════════════ LOG ══════════════════ -->
+      <div x-show="view === 'log'" class="px-5 py-8 space-y-8">
+
+        <div>
+          <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
+          <h1 class="text-4xl font-light tracking-tight leading-tight">Registrar<br>uma xícara</h1>
+        </div>
+
+        <!-- Bean picker -->
+        <div class="space-y-3">
+          <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Café</p>
+
+          <div x-show="shelf.length === 0" class="border border-stone-200 p-5 text-center space-y-2">
+            <p class="text-sm text-stone-900/50">Prateleira vazia.</p>
+            <button @click="view = 'shelf'"
+              class="text-sm text-[#7C4B2A] font-medium min-h-[44px]">Adicionar cafés à prateleira →</button>
+          </div>
+
+          <div x-show="shelf.length > 0" class="grid grid-cols-2 gap-2">
+            <template x-for="coffee in shelf" :key="coffee.id">
+              <button @click="form.bean = coffee.id"
+                :class="form.bean === coffee.id
+                  ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900'
+                  : 'border-stone-200 text-stone-900/60'"
+                class="border p-4 text-left min-h-[56px] transition-colors duration-150">
+                <span class="text-sm font-medium block leading-snug" x-text="coffee.name"></span>
+                <span x-show="coffee.process" class="text-[11px] text-stone-900/40 mt-0.5 block" x-text="coffee.process"></span>
+              </button>
+            </template>
+            <button @click="form.bean = 'outro'"
+              :class="form.bean === 'outro'
+                ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900'
+                : 'border-stone-200 text-stone-900/60'"
+              class="border p-4 text-left min-h-[56px] transition-colors duration-150">
+              <span class="text-sm font-medium block">Outro</span>
+              <span class="text-[11px] text-stone-900/40 mt-0.5 block">digitar nome</span>
+            </button>
+          </div>
+          <input x-show="form.bean === 'outro'" x-model="form.customBean"
+            type="text" placeholder="Nome do café…"
+            class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 transition-colors">
+        </div>
+
+        <!-- Method -->
+        <div class="space-y-3">
+          <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Método</p>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="m in methods" :key="m.id">
+              <button @click="form.method = m.id"
+                :class="form.method === m.id ? 'bg-stone-900 text-stone-50' : 'border border-stone-200 text-stone-900/60'"
+                class="px-4 py-2 text-sm min-h-[44px] transition-colors duration-150"
+                x-text="m.label"></button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Tasting Wizard -->
+        <div class="space-y-6">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Degustação</p>
+              <span x-show="tastingStep < questions.length"
+                class="text-xs tabular-nums text-stone-900/30"
+                x-text="(tastingStep + 1) + ' / ' + questions.length"></span>
+              <span x-show="tastingStep >= questions.length"
+                class="text-[10px] tracking-widest uppercase text-[#7C4B2A]">Resumo</span>
+            </div>
+            <div class="w-full h-px bg-stone-200">
+              <div class="h-px bg-[#7C4B2A] motion-safe:transition-all motion-safe:duration-300"
+                :style="'width:' + Math.min(100, (tastingStep / questions.length) * 100) + '%'"></div>
+            </div>
+          </div>
+
+          <template x-if="tastingStep < questions.length">
+            <div class="space-y-5">
+              <div>
+                <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]"
+                  x-text="questions[tastingStep].prompt"></span>
+                <h2 class="text-2xl font-light tracking-tight mt-2 leading-snug"
+                  x-text="questions[tastingStep].question"></h2>
+                <p class="text-sm text-stone-900/45 mt-2 leading-relaxed"
+                  x-text="questions[tastingStep].hint"></p>
+              </div>
+              <div class="space-y-2">
+                <template x-for="opt in questions[tastingStep].options" :key="opt.value">
+                  <button @click="selectAnswer(questions[tastingStep].id, opt.value)"
+                    :class="form.answers[questions[tastingStep].id] === opt.value
+                      ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900'
+                      : 'border-stone-200 text-stone-900/65'"
+                    class="w-full border p-4 text-left min-h-[60px] transition-colors duration-100 active:scale-[0.99]">
+                    <span class="text-sm font-normal block" x-text="opt.label"></span>
+                    <span x-show="opt.sub" class="text-xs text-stone-900/40 block mt-0.5" x-text="opt.sub"></span>
+                  </button>
+                </template>
+              </div>
+              <button x-show="tastingStep > 0" @click="tastingStep--"
+                class="text-xs text-stone-900/30 min-h-[44px]">← pergunta anterior</button>
+            </div>
+          </template>
+
+          <template x-if="tastingStep >= questions.length">
+            <div class="space-y-1">
+              <div class="border-t border-stone-200">
+                <template x-for="q in questions" :key="q.id">
+                  <div x-show="form.answers[q.id]"
+                    class="border-b border-stone-100 py-3.5 flex items-start justify-between gap-6">
+                    <span class="text-xs text-stone-900/40 mt-0.5 shrink-0" x-text="q.prompt"></span>
+                    <span class="text-sm text-right" x-text="getAnswerLabel(q.id, form.answers[q.id])"></span>
+                  </div>
+                </template>
+              </div>
+              <button @click="tastingStep = questions.length - 1"
+                class="text-xs text-stone-900/30 min-h-[44px]">← corrigir resposta</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Free notes -->
+        <div class="space-y-2">
+          <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Observações</p>
+          <textarea x-model="form.freeNotes" rows="3"
+            placeholder="Qualquer coisa que você percebeu…"
+            class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 resize-none transition-colors leading-relaxed"></textarea>
+        </div>
+
+        <!-- Save -->
+        <button @click="saveLog()" :disabled="!form.bean || saving"
+          :class="form.bean && !saving ? 'bg-stone-900 text-stone-50 active:scale-[0.98]' : 'bg-stone-200 text-stone-900/30 cursor-not-allowed'"
+          class="w-full py-4 text-sm font-medium tracking-wide transition-all duration-150">
+          <span x-show="!saving">Salvar registro</span>
+          <span x-show="saving">Salvando…</span>
+        </button>
+
       </div>
 
-      <!-- Bean -->
-      <div class="space-y-3">
-        <p class="text-[11px] tracking-widest uppercase text-stone-900/40 dark:text-stone-50/40">Café</p>
-        <div class="grid grid-cols-2 gap-2">
-          <template x-for="bean in beans" :key="bean.id">
-            <button @click="form.bean = bean.id"
-              :class="form.bean === bean.id
-                ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900 dark:text-stone-50'
-                : 'border-stone-200 dark:border-stone-800 text-stone-900/60 dark:text-stone-50/60'"
-              class="border p-4 text-left min-h-[56px] transition-colors duration-150">
-              <span class="text-sm font-medium block leading-snug" x-text="bean.name"></span>
-              <span class="text-[11px] text-stone-900/40 dark:text-stone-50/40 mt-0.5 block" x-text="bean.process"></span>
+      <!-- ══════════════════ SHELF ══════════════════ -->
+      <div x-show="view === 'shelf'" class="px-5 py-8 space-y-6">
+
+        <div>
+          <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
+          <h1 class="text-4xl font-light tracking-tight leading-tight">Minha<br>Prateleira</h1>
+        </div>
+
+        <!-- Add form -->
+        <div x-show="addingCoffee" class="border border-[#7C4B2A]/25 p-5 space-y-4 bg-[#7C4B2A]/5">
+          <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Novo café</p>
+          <div class="space-y-3">
+            <input x-model="shelfForm.name" x-ref="shelfNameInput" type="text" placeholder="Nome do café…"
+              class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 transition-colors">
+            <input x-model="shelfForm.store" type="text" placeholder="Link da loja ou nome (opcional)…"
+              class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 transition-colors">
+          </div>
+          <div class="flex gap-3">
+            <button @click="addingCoffee = false; shelfForm = { name: '', store: '', fetching: false }"
+              class="px-4 py-3 border border-stone-200 text-sm text-stone-900/60 min-h-[44px] transition-colors hover:border-stone-900">
+              Cancelar
             </button>
+            <button @click="saveToShelf()" :disabled="!shelfForm.name.trim() || shelfForm.fetching"
+              :class="shelfForm.name.trim() && !shelfForm.fetching ? 'bg-stone-900 text-stone-50 active:scale-[0.98]' : 'bg-stone-200 text-stone-900/30 cursor-not-allowed'"
+              class="flex-1 py-3 text-sm font-medium min-h-[44px] transition-all duration-150">
+              <span x-show="!shelfForm.fetching">Adicionar →</span>
+              <span x-show="shelfForm.fetching">Buscando info…</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="shelf.length === 0 && !addingCoffee" class="py-20 text-center space-y-2">
+          <p class="text-stone-900/35 text-sm">Prateleira vazia.</p>
+          <p class="text-stone-900/25 text-xs">Adicione os cafés que você tem agora.</p>
+        </div>
+
+        <!-- Shelf list -->
+        <div x-show="shelf.length > 0">
+          <template x-for="coffee in shelf" :key="coffee.id">
+            <div class="border-t border-stone-200 py-4 flex items-start justify-between gap-3">
+              <div class="space-y-1.5 min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="text-base font-normal leading-snug" x-text="coffee.name"></h3>
+                  <span x-show="coffee.process"
+                    class="text-[10px] tracking-widest uppercase bg-[#7C4B2A]/10 text-[#7C4B2A] px-2 py-0.5 shrink-0"
+                    x-text="coffee.process"></span>
+                </div>
+                <p x-show="coffee.variety || coffee.region"
+                  class="text-xs text-stone-900/40"
+                  x-text="[coffee.variety, coffee.region].filter(Boolean).join(' · ')"></p>
+                <div x-show="coffee.notes && coffee.notes.length > 0" class="flex flex-wrap gap-1">
+                  <template x-for="note in (coffee.notes || [])" :key="note">
+                    <span class="text-[11px] px-2 py-0.5 border border-stone-200 text-stone-900/60" x-text="note"></span>
+                  </template>
+                </div>
+                <a x-show="coffee.store && coffee.store.startsWith('http')"
+                  :href="coffee.store" target="_blank" rel="noopener"
+                  class="text-xs text-stone-900/30 underline underline-offset-2 block"
+                  x-text="getStoreName(coffee.store)"></a>
+                <span x-show="coffee.store && !coffee.store.startsWith('http')"
+                  class="text-xs text-stone-900/30 block" x-text="coffee.store"></span>
+              </div>
+              <button @click="removeFromShelf(coffee.id)"
+                class="text-stone-900/20 hover:text-red-400 transition-colors duration-150 text-xl leading-none min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0">
+                ×
+              </button>
+            </div>
           </template>
-          <button @click="form.bean = 'outro'"
-            :class="form.bean === 'outro'
-              ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900 dark:text-stone-50'
-              : 'border-stone-200 dark:border-stone-800 text-stone-900/60 dark:text-stone-50/60'"
-            class="border p-4 text-left min-h-[56px] transition-colors duration-150">
-            <span class="text-sm font-medium block">Outro</span>
-            <span class="text-[11px] text-stone-900/40 dark:text-stone-50/40 mt-0.5 block">digitar nome</span>
+          <div class="border-t border-stone-200"></div>
+        </div>
+
+        <!-- Add button -->
+        <button x-show="!addingCoffee"
+          @click="addingCoffee = true; $nextTick(() => $refs.shelfNameInput && $refs.shelfNameInput.focus())"
+          class="w-full py-4 border border-stone-900 text-sm font-medium tracking-wide min-h-[44px] transition-all duration-150 hover:bg-stone-900 hover:text-stone-50 active:scale-[0.98]">
+          + Adicionar café
+        </button>
+
+      </div>
+
+      <!-- ══════════════════ TRAIN ══════════════════ -->
+      <div x-show="view === 'train'" class="px-5 py-8 space-y-8">
+
+        <div>
+          <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
+          <h1 class="text-4xl font-light tracking-tight leading-tight">Exercícios<br>sensoriais</h1>
+        </div>
+
+        <div class="space-y-4">
+          <template x-for="ex in exercises" :key="ex.id">
+            <div class="border border-stone-200">
+              <div class="p-5 space-y-4">
+                <div>
+                  <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]" x-text="ex.category"></span>
+                  <h2 class="text-lg font-normal mt-2 leading-snug" x-text="ex.name"></h2>
+                  <p class="text-sm text-stone-900/55 mt-2 leading-relaxed" x-text="ex.desc"></p>
+                </div>
+                <button @click="startExercise(ex)"
+                  class="px-5 py-3 border border-stone-900 text-sm font-medium min-h-[44px] hover:bg-stone-900 hover:text-stone-50 transition-colors duration-150">
+                  Iniciar →
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="space-y-5 pt-2">
+          <div class="flex items-center gap-4">
+            <div class="flex-1 border-t border-stone-200"></div>
+            <span class="text-[10px] tracking-widest uppercase text-stone-900/30">técnicas</span>
+            <div class="flex-1 border-t border-stone-200"></div>
+          </div>
+          <template x-for="tip in techniques" :key="tip.title">
+            <div class="border-t border-stone-100 pt-4">
+              <h3 class="text-sm font-medium mb-1.5" x-text="tip.title"></h3>
+              <p class="text-sm text-stone-900/50 leading-relaxed" x-text="tip.body"></p>
+            </div>
+          </template>
+        </div>
+
+      </div>
+
+      <!-- ══════════════════ EXERCISE ══════════════════ -->
+      <div x-show="view === 'exercise'" class="px-5 py-8">
+        <template x-if="exercise">
+          <div class="space-y-7">
+            <div>
+              <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]" x-text="exercise.category"></span>
+              <div class="w-6 h-px bg-[#7C4B2A] mt-2 mb-3"></div>
+              <h1 class="text-2xl font-light tracking-tight" x-text="exercise.name"></h1>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-stone-900/40">Etapa</span>
+                <span class="text-sm tabular-nums text-stone-900/60"
+                  x-text="(exerciseStep + 1) + ' / ' + exercise.steps.length"></span>
+              </div>
+              <div class="w-full h-px bg-stone-200">
+                <div class="h-px bg-[#7C4B2A] motion-safe:transition-all motion-safe:duration-300"
+                  :style="'width:' + ((exerciseStep + 1) / exercise.steps.length * 100) + '%'"></div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <template x-if="exercise.steps[exerciseStep].temp">
+                <div class="text-5xl font-light leading-none" x-text="exercise.steps[exerciseStep].temp"></div>
+              </template>
+              <h2 class="text-2xl font-normal leading-snug text-balance"
+                x-text="exercise.steps[exerciseStep].label"></h2>
+              <p class="text-sm text-stone-900/55 leading-relaxed"
+                x-text="exercise.steps[exerciseStep].hint"></p>
+            </div>
+            <div class="space-y-2">
+              <p class="text-[11px] tracking-widest uppercase text-stone-900/40">O que você percebe?</p>
+              <textarea
+                @input="stepNotes[exerciseStep] = $event.target.value"
+                :value="stepNotes[exerciseStep]"
+                rows="3" placeholder="Anote livremente…"
+                class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 resize-none transition-colors leading-relaxed"></textarea>
+            </div>
+            <div class="flex gap-3">
+              <button x-show="exerciseStep > 0" @click="exerciseStep--"
+                class="px-5 py-3 border border-stone-200 text-sm min-h-[48px] text-stone-900/60 transition-colors">←</button>
+              <button x-show="exerciseStep < exercise.steps.length - 1" @click="exerciseStep++"
+                class="flex-1 py-3 bg-stone-900 text-stone-50 text-sm font-medium min-h-[48px] active:scale-[0.98] transition-all duration-150">
+                Próximo →
+              </button>
+              <button x-show="exerciseStep === exercise.steps.length - 1" @click="finishExercise()"
+                class="flex-1 py-3 bg-[#7C4B2A] text-white text-sm font-medium min-h-[48px] active:scale-[0.98] transition-all duration-150">
+                Concluir →
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ══════════════════ TIP ══════════════════ -->
+      <div x-show="view === 'tip'" class="px-5 py-10 relative overflow-hidden">
+        <div class="absolute top-2 right-4 text-[9rem] font-light leading-none text-stone-900/[0.03] select-none pointer-events-none">→</div>
+        <div class="space-y-8 relative">
+          <div>
+            <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]">Para a próxima vez</span>
+            <div class="w-6 h-px bg-[#7C4B2A] mt-3 mb-5"></div>
+            <h1 class="text-3xl font-light tracking-tight leading-snug text-balance" x-text="tip.title"></h1>
+          </div>
+          <p class="text-base leading-relaxed text-stone-900/65" x-text="tip.body"></p>
+          <button @click="view = 'history'"
+            class="w-full py-4 bg-stone-900 text-stone-50 text-sm font-medium tracking-wide active:scale-[0.98] transition-all duration-150">
+            Entendido →
           </button>
         </div>
-        <input x-show="form.bean === 'outro'" x-model="form.customBean"
-          type="text" placeholder="Nome do café…"
-          class="w-full border border-stone-200 dark:border-stone-800 bg-transparent text-stone-900 dark:text-stone-50 text-sm px-4 py-3 outline-none focus:border-stone-900 dark:focus:border-stone-50 placeholder:text-stone-900/30 dark:placeholder:text-stone-50/30 transition-colors">
       </div>
 
-      <!-- Method -->
-      <div class="space-y-3">
-        <p class="text-[11px] tracking-widest uppercase text-stone-900/40 dark:text-stone-50/40">Método</p>
-        <div class="flex flex-wrap gap-2">
-          <template x-for="m in methods" :key="m.id">
-            <button @click="form.method = m.id"
-              :class="form.method === m.id
-                ? 'bg-stone-900 dark:bg-stone-50 text-stone-50 dark:text-stone-900'
-                : 'border border-stone-200 dark:border-stone-800 text-stone-900/60 dark:text-stone-50/60'"
-              class="px-4 py-2 text-sm min-h-[44px] transition-colors duration-150"
-              x-text="m.label">
-            </button>
+      <!-- ══════════════════ HISTORY ══════════════════ -->
+      <div x-show="view === 'history'" class="px-5 py-8 space-y-6">
+
+        <div>
+          <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
+          <h1 class="text-4xl font-light tracking-tight leading-tight">Histórico</h1>
+        </div>
+
+        <div x-show="history.length === 0" class="py-20 text-center space-y-2">
+          <p class="text-stone-900/35 text-sm">Nenhum registro ainda.</p>
+          <p class="text-stone-900/25 text-xs">Prove um café e anote na aba Log.</p>
+        </div>
+
+        <div>
+          <template x-for="(entry, idx) in history" :key="entry.docId || entry.id">
+            <div @click="openEntry = openEntry === idx ? null : idx"
+              class="border-t border-stone-200 py-5 cursor-pointer">
+              <div class="flex items-start justify-between gap-4">
+                <div class="space-y-1 min-w-0">
+                  <h3 class="text-base font-normal leading-snug" x-text="getEntryTitle(entry)"></h3>
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <span class="text-[11px] uppercase tracking-wide text-stone-900/40"
+                      x-text="getMethodLabel(entry.method)"></span>
+                    <span class="text-[11px] text-stone-900/25" x-text="formatDate(entry.date)"></span>
+                  </div>
+                </div>
+                <span x-show="entry.bean === 'exercise'"
+                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A] shrink-0 mt-0.5">exercício</span>
+                <span x-show="entry.bean !== 'exercise' && entry.answers && entry.answers.impact"
+                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A]/70 shrink-0 mt-0.5"
+                  x-text="getAnswerLabel('impact', (entry.answers || {}).impact || '')"></span>
+              </div>
+              <p x-show="getAnswerSummary(entry)"
+                class="text-xs text-stone-900/45 mt-2 leading-relaxed"
+                x-text="getAnswerSummary(entry)"></p>
+              <div x-show="openEntry === idx"
+                class="mt-5 pt-5 border-t border-stone-100 space-y-4">
+                <div x-show="entry.answers && Object.keys(entry.answers || {}).length > 0"
+                  class="border-t border-stone-100">
+                  <template x-for="q in questions" :key="q.id">
+                    <div x-show="entry.answers && entry.answers[q.id]"
+                      class="flex items-start justify-between gap-4 border-b border-stone-100 py-2.5">
+                      <span class="text-xs text-stone-900/40 mt-px shrink-0" x-text="q.prompt"></span>
+                      <span class="text-sm text-right" x-text="getAnswerLabel(q.id, entry.answers[q.id])"></span>
+                    </div>
+                  </template>
+                </div>
+                <div x-show="entry.freeNotes">
+                  <p class="text-sm text-stone-900/55 leading-relaxed" x-text="entry.freeNotes"></p>
+                </div>
+                <button @click.stop="deleteEntry(idx)"
+                  class="text-xs text-stone-900/25 hover:text-red-500 transition-colors min-h-[44px] pr-2">
+                  Apagar registro
+                </button>
+              </div>
+            </div>
           </template>
         </div>
-      </div>
-
-      <!-- ── Tasting Wizard ──────────────────────────────── -->
-      <div class="space-y-6">
-
-        <!-- Progress -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <p class="text-[11px] tracking-widest uppercase text-stone-900/40 dark:text-stone-50/40">Degustação</p>
-            <span x-show="tastingStep < questions.length"
-              class="text-xs tabular-nums text-stone-900/30 dark:text-stone-50/30"
-              x-text="(tastingStep + 1) + ' / ' + questions.length"></span>
-            <span x-show="tastingStep >= questions.length"
-              class="text-[10px] tracking-widest uppercase text-[#7C4B2A]">Resumo</span>
-          </div>
-          <div class="w-full h-px bg-stone-200 dark:bg-stone-800">
-            <div class="h-px bg-[#7C4B2A] motion-safe:transition-all motion-safe:duration-300"
-              :style="'width:' + Math.min(100, (tastingStep / questions.length) * 100) + '%'"></div>
-          </div>
-        </div>
-
-        <!-- Active question -->
-        <template x-if="tastingStep < questions.length">
-          <div class="space-y-5">
-            <div>
-              <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]"
-                x-text="questions[tastingStep].prompt"></span>
-              <h2 class="text-2xl font-light tracking-tight mt-2 leading-snug"
-                x-text="questions[tastingStep].question"></h2>
-              <p class="text-sm text-stone-900/45 dark:text-stone-50/45 mt-2 leading-relaxed"
-                x-text="questions[tastingStep].hint"></p>
-            </div>
-
-            <div class="space-y-2">
-              <template x-for="opt in questions[tastingStep].options" :key="opt.value">
-                <button @click="selectAnswer(questions[tastingStep].id, opt.value)"
-                  :class="form.answers[questions[tastingStep].id] === opt.value
-                    ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900 dark:text-stone-50'
-                    : 'border-stone-200 dark:border-stone-800 text-stone-900/65 dark:text-stone-50/65'"
-                  class="w-full border p-4 text-left min-h-[60px] transition-colors duration-100 active:scale-[0.99]">
-                  <span class="text-sm font-normal block" x-text="opt.label"></span>
-                  <span x-show="opt.sub"
-                    class="text-xs text-stone-900/40 dark:text-stone-50/40 block mt-0.5"
-                    x-text="opt.sub"></span>
-                </button>
-              </template>
-            </div>
-
-            <button x-show="tastingStep > 0" @click="tastingStep--"
-              class="text-xs text-stone-900/30 dark:text-stone-50/30 min-h-[44px]">
-              ← pergunta anterior
-            </button>
-          </div>
-        </template>
-
-        <!-- Summary screen -->
-        <template x-if="tastingStep >= questions.length">
-          <div class="space-y-1">
-            <div class="border-t border-stone-200 dark:border-stone-800">
-              <template x-for="q in questions" :key="q.id">
-                <div x-show="form.answers[q.id]"
-                  class="border-b border-stone-100 dark:border-stone-900 py-3.5 flex items-start justify-between gap-6">
-                  <span class="text-xs text-stone-900/40 dark:text-stone-50/40 mt-0.5 shrink-0"
-                    x-text="q.prompt"></span>
-                  <span class="text-sm text-stone-900 dark:text-stone-50 text-right"
-                    x-text="getAnswerLabel(q.id, form.answers[q.id])"></span>
-                </div>
-              </template>
-            </div>
-            <button @click="tastingStep = questions.length - 1"
-              class="text-xs text-stone-900/30 dark:text-stone-50/30 min-h-[44px]">
-              ← corrigir resposta
-            </button>
-          </div>
-        </template>
 
       </div>
 
-      <!-- Free notes -->
-      <div class="space-y-2">
-        <p class="text-[11px] tracking-widest uppercase text-stone-900/40 dark:text-stone-50/40">Observações</p>
-        <textarea x-model="form.freeNotes" rows="3"
-          placeholder="Qualquer coisa que você percebeu…"
-          class="w-full border border-stone-200 dark:border-stone-800 bg-transparent text-stone-900 dark:text-stone-50 text-sm px-4 py-3 outline-none focus:border-stone-900 dark:focus:border-stone-50 placeholder:text-stone-900/30 dark:placeholder:text-stone-50/30 resize-none transition-colors leading-relaxed">
-        </textarea>
-      </div>
+    </main>
 
-      <!-- Save -->
-      <button @click="saveLog()" :disabled="!form.bean"
-        :class="form.bean
-          ? 'bg-stone-900 dark:bg-stone-50 text-stone-50 dark:text-stone-900 active:scale-[0.98]'
-          : 'bg-stone-200 dark:bg-stone-800 text-stone-900/30 dark:text-stone-50/30 cursor-not-allowed'"
-        class="w-full py-4 text-sm font-medium tracking-wide transition-all duration-150">
-        Salvar registro
-      </button>
-
-    </div>
-
-    <!-- ══════════════════ BEANS ══════════════════ -->
-    <div x-show="view === 'beans'" class="px-5 py-8 space-y-8">
-
-      <div>
-        <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
-        <h1 class="text-4xl font-light tracking-tight leading-tight">Cafés<br>em mãos</h1>
-      </div>
-
-      <template x-for="bean in beans" :key="bean.id">
-        <div class="border border-stone-200 dark:border-stone-800 border-t-2 border-t-[#7C4B2A]">
-          <div class="p-5 space-y-5">
-
-            <!-- Header -->
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h2 class="text-xl font-normal leading-snug" x-text="bean.name"></h2>
-                <p class="text-xs text-stone-900/40 dark:text-stone-50/40 mt-1 leading-relaxed"
-                  x-text="bean.variety + ' · ' + bean.region"></p>
-              </div>
-              <span class="text-[10px] tracking-widest uppercase bg-[#7C4B2A]/10 text-[#7C4B2A] px-2 py-1 shrink-0 mt-0.5"
-                x-text="bean.process"></span>
-            </div>
-
-            <!-- Official notes -->
-            <div class="space-y-2">
-              <p class="text-[10px] tracking-widest uppercase text-stone-900/25 dark:text-stone-50/25">Notas do rótulo</p>
-              <div class="flex flex-wrap gap-1.5">
-                <template x-for="note in bean.notes" :key="note">
-                  <span class="px-2.5 py-1 text-xs border border-stone-200 dark:border-stone-800 text-stone-900/70 dark:text-stone-50/70"
-                    x-text="note"></span>
-                </template>
-              </div>
-            </div>
-
-            <!-- Scores -->
-            <div class="space-y-2.5">
-              <template x-for="attr in attributes" :key="attr.key">
-                <div class="flex items-center gap-3">
-                  <span class="text-[11px] uppercase tracking-wide text-stone-900/40 dark:text-stone-50/40 w-14 shrink-0"
-                    x-text="attr.label"></span>
-                  <div class="flex gap-1 flex-1">
-                    <template x-for="n in [1,2,3,4,5]" :key="n">
-                      <div :class="bean[attr.key] >= n ? 'bg-[#7C4B2A]' : 'bg-stone-200 dark:bg-stone-800'"
-                        class="flex-1 h-1"></div>
-                    </template>
-                  </div>
-                  <span class="text-xs tabular-nums text-stone-900/30 dark:text-stone-50/30"
-                    x-text="bean[attr.key] + '/5'"></span>
-                </div>
-              </template>
-            </div>
-
-            <!-- Tip -->
-            <div class="pt-3 border-t border-stone-100 dark:border-stone-900">
-              <p class="text-sm text-stone-900/55 dark:text-stone-50/55 leading-relaxed"
-                x-text="bean.tip"></p>
-            </div>
-
-          </div>
-        </div>
-      </template>
-
-      <!-- Comparison tip -->
-      <div class="border border-[#7C4B2A]/20 bg-[#7C4B2A]/5 p-4">
-        <p class="text-sm text-stone-900/65 dark:text-stone-50/65 leading-relaxed">
-          Prepare os dois com a mesma receita no mesmo dia e compare a ~55°C. O contraste força o cérebro a articular diferenças que isoladamente passam despercebidas.
-        </p>
-      </div>
-
-    </div>
-
-    <!-- ══════════════════ TRAIN ══════════════════ -->
-    <div x-show="view === 'train'" class="px-5 py-8 space-y-8">
-
-      <div>
-        <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
-        <h1 class="text-4xl font-light tracking-tight leading-tight">Exercícios<br>sensoriais</h1>
-      </div>
-
-      <!-- Exercise cards -->
-      <div class="space-y-4">
-        <template x-for="ex in exercises" :key="ex.id">
-          <div class="border border-stone-200 dark:border-stone-800">
-            <div class="p-5 space-y-4">
-              <div>
-                <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]" x-text="ex.category"></span>
-                <h2 class="text-lg font-normal mt-2 leading-snug" x-text="ex.name"></h2>
-                <p class="text-sm text-stone-900/55 dark:text-stone-50/55 mt-2 leading-relaxed"
-                  x-text="ex.desc"></p>
-              </div>
-              <button @click="startExercise(ex)"
-                class="px-5 py-3 border border-stone-900 dark:border-stone-50 text-sm font-medium min-h-[44px]
-                       hover:bg-stone-900 hover:text-stone-50 dark:hover:bg-stone-50 dark:hover:text-stone-900
-                       transition-colors duration-150">
-                Iniciar →
-              </button>
-            </div>
-          </div>
+    <!-- Bottom Nav -->
+    <nav x-show="view !== 'exercise' && view !== 'tip'"
+      class="fixed bottom-0 left-0 right-0 z-20 nav-h bg-stone-50 border-t border-stone-200">
+      <div class="grid grid-cols-4 h-16">
+        <template x-for="tab in tabs" :key="tab.id">
+          <button @click="view = tab.id"
+            :class="view === tab.id ? 'text-[#7C4B2A]' : 'text-stone-900/35'"
+            class="flex flex-col items-center justify-center gap-1 min-h-[44px] transition-colors duration-150">
+            <span class="text-[10px] font-medium tracking-widest uppercase" x-text="tab.label"></span>
+            <div :class="view === tab.id ? 'bg-[#7C4B2A]' : 'bg-transparent'"
+              class="w-4 h-px transition-colors duration-150"></div>
+          </button>
         </template>
       </div>
+    </nav>
 
-      <!-- Techniques reference -->
-      <div class="space-y-5 pt-2">
-        <div class="flex items-center gap-4">
-          <div class="flex-1 border-t border-stone-200 dark:border-stone-800"></div>
-          <span class="text-[10px] tracking-widest uppercase text-stone-900/30 dark:text-stone-50/30">técnicas</span>
-          <div class="flex-1 border-t border-stone-200 dark:border-stone-800"></div>
-        </div>
-
-        <template x-for="tip in techniques" :key="tip.title">
-          <div class="border-t border-stone-100 dark:border-stone-900 pt-4">
-            <h3 class="text-sm font-medium text-stone-900 dark:text-stone-50 mb-1.5" x-text="tip.title"></h3>
-            <p class="text-sm text-stone-900/50 dark:text-stone-50/50 leading-relaxed" x-text="tip.body"></p>
-          </div>
-        </template>
-      </div>
-
-    </div>
-
-    <!-- ══════════════════ EXERCISE ══════════════════ -->
-    <div x-show="view === 'exercise'" class="px-5 py-8">
-      <template x-if="exercise">
-        <div class="space-y-7">
-
-          <!-- Exercise header -->
-          <div>
-            <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]" x-text="exercise.category"></span>
-            <div class="w-6 h-px bg-[#7C4B2A] mt-2 mb-3"></div>
-            <h1 class="text-2xl font-light tracking-tight" x-text="exercise.name"></h1>
-          </div>
-
-          <!-- Progress -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-stone-900/40 dark:text-stone-50/40">Etapa</span>
-              <span class="text-sm tabular-nums text-stone-900/60 dark:text-stone-50/60"
-                x-text="(exerciseStep + 1) + ' / ' + exercise.steps.length"></span>
-            </div>
-            <div class="w-full h-px bg-stone-200 dark:bg-stone-800">
-              <div class="h-px bg-[#7C4B2A] motion-safe:transition-all motion-safe:duration-300"
-                :style="'width:' + ((exerciseStep + 1) / exercise.steps.length * 100) + '%'">
-              </div>
-            </div>
-          </div>
-
-          <!-- Step content -->
-          <div class="space-y-3">
-            <template x-if="exercise.steps[exerciseStep].temp">
-              <div class="text-5xl font-light text-stone-900 dark:text-stone-50 leading-none"
-                x-text="exercise.steps[exerciseStep].temp">
-              </div>
-            </template>
-            <h2 class="text-2xl font-normal leading-snug text-balance"
-              x-text="exercise.steps[exerciseStep].label"></h2>
-            <p class="text-sm text-stone-900/55 dark:text-stone-50/55 leading-relaxed"
-              x-text="exercise.steps[exerciseStep].hint"></p>
-          </div>
-
-          <!-- Step note -->
-          <div class="space-y-2">
-            <p class="text-[11px] tracking-widest uppercase text-stone-900/40 dark:text-stone-50/40">
-              O que você percebe?
-            </p>
-            <textarea :x-model="'stepNotes[' + exerciseStep + ']'"
-              @input="stepNotes[exerciseStep] = $event.target.value"
-              :value="stepNotes[exerciseStep]"
-              rows="3" placeholder="Anote livremente…"
-              class="w-full border border-stone-200 dark:border-stone-800 bg-transparent text-stone-900 dark:text-stone-50
-                     text-sm px-4 py-3 outline-none focus:border-stone-900 dark:focus:border-stone-50
-                     placeholder:text-stone-900/30 dark:placeholder:text-stone-50/30 resize-none transition-colors leading-relaxed">
-            </textarea>
-          </div>
-
-          <!-- Navigation -->
-          <div class="flex gap-3">
-            <button x-show="exerciseStep > 0" @click="exerciseStep--"
-              class="px-5 py-3 border border-stone-200 dark:border-stone-800 text-sm min-h-[48px]
-                     text-stone-900/60 dark:text-stone-50/60 transition-colors duration-150">
-              ←
-            </button>
-            <button x-show="exerciseStep < exercise.steps.length - 1"
-              @click="exerciseStep++"
-              class="flex-1 py-3 bg-stone-900 dark:bg-stone-50 text-stone-50 dark:text-stone-900
-                     text-sm font-medium min-h-[48px] active:scale-[0.98] transition-all duration-150">
-              Próximo →
-            </button>
-            <button x-show="exerciseStep === exercise.steps.length - 1"
-              @click="finishExercise()"
-              class="flex-1 py-3 bg-[#7C4B2A] text-white text-sm font-medium min-h-[48px]
-                     active:scale-[0.98] transition-all duration-150">
-              Concluir →
-            </button>
-          </div>
-
-        </div>
-      </template>
-    </div>
-
-    <!-- ══════════════════ TIP ══════════════════ -->
-    <div x-show="view === 'tip'" class="px-5 py-10 relative overflow-hidden">
-      <div class="absolute top-2 right-4 text-[9rem] font-light leading-none text-stone-900/[0.03] dark:text-stone-50/[0.03] select-none pointer-events-none">→</div>
-      <div class="space-y-8 relative">
-        <div>
-          <span class="text-[10px] tracking-widest uppercase text-[#7C4B2A]">Para a próxima vez</span>
-          <div class="w-6 h-px bg-[#7C4B2A] mt-3 mb-5"></div>
-          <h1 class="text-3xl font-light tracking-tight leading-snug text-balance" x-text="tip.title"></h1>
-        </div>
-        <p class="text-base leading-relaxed text-stone-900/65 dark:text-stone-50/65" x-text="tip.body"></p>
-        <button @click="view = 'history'"
-          class="w-full py-4 bg-stone-900 dark:bg-stone-50 text-stone-50 dark:text-stone-900 text-sm font-medium tracking-wide active:scale-[0.98] transition-all duration-150">
-          Entendido →
-        </button>
-      </div>
-    </div>
-
-    <!-- ══════════════════ HISTORY ══════════════════ -->
-    <div x-show="view === 'history'" class="px-5 py-8 space-y-6">
-
-      <div>
-        <div class="w-8 h-px bg-[#7C4B2A] mb-4"></div>
-        <h1 class="text-4xl font-light tracking-tight leading-tight">Histórico</h1>
-      </div>
-
-      <!-- Empty state -->
-      <div x-show="history.length === 0" class="py-20 text-center space-y-2">
-        <p class="text-stone-900/35 dark:text-stone-50/35 text-sm">Nenhum registro ainda.</p>
-        <p class="text-stone-900/25 dark:text-stone-50/25 text-xs">Prove um café e anote na aba Log.</p>
-      </div>
-
-      <!-- Entries list -->
-      <div>
-        <template x-for="(entry, idx) in history" :key="entry.id">
-          <div @click="openEntry = openEntry === idx ? null : idx"
-            class="border-t border-stone-200 dark:border-stone-800 py-5 cursor-pointer">
-
-            <!-- Entry header -->
-            <div class="flex items-start justify-between gap-4">
-              <div class="space-y-1 min-w-0">
-                <h3 class="text-base font-normal leading-snug"
-                  x-text="getEntryTitle(entry)"></h3>
-                <div class="flex items-center gap-3 flex-wrap">
-                  <span class="text-[11px] uppercase tracking-wide text-stone-900/40 dark:text-stone-50/40"
-                    x-text="getMethodLabel(entry.method)"></span>
-                  <span class="text-[11px] text-stone-900/25 dark:text-stone-50/25"
-                    x-text="formatDate(entry.date)"></span>
-                </div>
-              </div>
-              <!-- Type badge -->
-              <span x-show="entry.bean === 'exercise'"
-                class="text-[10px] tracking-widest uppercase text-[#7C4B2A] shrink-0 mt-0.5">
-                exercício
-              </span>
-              <span x-show="entry.bean !== 'exercise' && entry.answers && entry.answers.impact"
-                class="text-[10px] tracking-widest uppercase text-[#7C4B2A]/70 shrink-0 mt-0.5"
-                x-text="getAnswerLabel('impact', (entry.answers || {}).impact || '')"></span>
-            </div>
-
-            <!-- Answer summary -->
-            <p x-show="getAnswerSummary(entry)"
-              class="text-xs text-stone-900/45 dark:text-stone-50/45 mt-2 leading-relaxed"
-              x-text="getAnswerSummary(entry)"></p>
-
-            <!-- Expanded detail -->
-            <div x-show="openEntry === idx"
-              class="mt-5 pt-5 border-t border-stone-100 dark:border-stone-900 space-y-4">
-
-              <!-- Answers detail -->
-              <div x-show="entry.answers && Object.keys(entry.answers || {}).length > 0"
-                class="border-t border-stone-100 dark:border-stone-900">
-                <template x-for="q in questions" :key="q.id">
-                  <div x-show="entry.answers && entry.answers[q.id]"
-                    class="flex items-start justify-between gap-4 border-b border-stone-100 dark:border-stone-900 py-2.5">
-                    <span class="text-xs text-stone-900/40 dark:text-stone-50/40 mt-px shrink-0"
-                      x-text="q.prompt"></span>
-                    <span class="text-sm text-stone-900 dark:text-stone-50 text-right"
-                      x-text="getAnswerLabel(q.id, entry.answers[q.id])"></span>
-                  </div>
-                </template>
-              </div>
-
-              <!-- Notes -->
-              <div x-show="entry.freeNotes">
-                <p class="text-sm text-stone-900/55 dark:text-stone-50/55 leading-relaxed"
-                  x-text="entry.freeNotes"></p>
-              </div>
-
-              <!-- Delete -->
-              <button @click.stop="deleteEntry(idx)"
-                class="text-xs text-stone-900/25 dark:text-stone-50/25 hover:text-red-500 transition-colors min-h-[44px] pr-2">
-                Apagar registro
-              </button>
-
-            </div>
-          </div>
-        </template>
-      </div>
-
-    </div>
-
-  </main>
-
-  <!-- ─── Bottom Nav ───────────────────────────────────────────── -->
-  <nav x-show="view !== 'exercise' && view !== 'tip'"
-    class="fixed bottom-0 left-0 right-0 z-20 nav-h bg-stone-50 dark:bg-stone-950 border-t border-stone-200 dark:border-stone-800">
-    <div class="grid grid-cols-4 h-16">
-      <template x-for="tab in tabs" :key="tab.id">
-        <button @click="view = tab.id"
-          :class="view === tab.id
-            ? 'text-[#7C4B2A]'
-            : 'text-stone-900/35 dark:text-stone-50/35'"
-          class="flex flex-col items-center justify-center gap-1 min-h-[44px] transition-colors duration-150">
-          <span class="text-[10px] font-medium tracking-widest uppercase" x-text="tab.label"></span>
-          <div :class="view === tab.id ? 'bg-[#7C4B2A]' : 'bg-transparent'"
-            class="w-4 h-px transition-colors duration-150"></div>
-        </button>
-      </template>
-    </div>
-  </nav>
+  </div><!-- /app -->
 
 </div>
 
 <script>
 function app() {
   return {
+    user: null,
+    loading: true,
+    saving: false,
     view: 'log',
     openEntry: null,
     exercise: null,
     exerciseStep: 0,
     stepNotes: [],
     history: [],
+    shelf: [],
+    addingCoffee: false,
+    shelfForm: { name: '', store: '', fetching: false },
     tastingStep: 0,
     tip: { title: '', body: '' },
-
-    form: {
-      bean: '',
-      customBean: '',
-      method: 'v60',
-      answers: {},
-      freeNotes: '',
-    },
+    form: { bean: '', customBean: '', method: 'v60', answers: {}, freeNotes: '' },
 
     tabs: [
-      { id: 'log',     label: 'Log'      },
-      { id: 'beans',   label: 'Cafés'    },
-      { id: 'train',   label: 'Treino'   },
-      { id: 'history', label: 'Histórico'},
+      { id: 'log',      label: 'Log'        },
+      { id: 'shelf',    label: 'Prateleira' },
+      { id: 'train',    label: 'Treino'     },
+      { id: 'history',  label: 'Histórico'  },
     ],
 
     methods: [
@@ -565,87 +541,74 @@ function app() {
       { id: 'outro',      label: 'Outro'      },
     ],
 
-    attributes: [
-      { key: 'acidity',   label: 'Acidez'  },
-      { key: 'sweetness', label: 'Doçura'  },
-      { key: 'body',      label: 'Corpo'   },
-    ],
-
     questions: [
       {
-        id: 'impact',
-        prompt: 'Primeiro impacto',
+        id: 'impact', prompt: 'Primeiro impacto',
         question: 'O que chega primeiro na boca?',
         hint: 'Tome um gole a ~55°C. Não pense muito — o que aparece imediatamente?',
         options: [
           { value: 'fruity', label: 'Frutado e vivo',        sub: 'frutas, brilho, leveza' },
-          { value: 'cocoa',  label: 'Achocolatado e pesado', sub: 'cacau, caramelo, peso' },
+          { value: 'cocoa',  label: 'Achocolatado e pesado', sub: 'cacau, caramelo, peso'  },
         ],
       },
       {
-        id: 'acidity',
-        prompt: 'Acidez',
+        id: 'acidity', prompt: 'Acidez',
         question: 'Você sente algo vivo ou brilhante na língua?',
         hint: 'Acidez não é azedo — é vivacidade, como suco de fruta. Sente formigamento na ponta?',
         options: [
           { value: 'bright', label: 'Sim, bem viva',   sub: 'brilhante, como laranja ou maracujá' },
-          { value: 'low',    label: 'Suave, discreta', sub: 'quase não percebo' },
+          { value: 'low',    label: 'Suave, discreta', sub: 'quase não percebo'                   },
         ],
       },
       {
-        id: 'body',
-        prompt: 'Corpo',
+        id: 'body', prompt: 'Corpo',
         question: 'Como o café ocupa a boca?',
         hint: 'Segure um segundo antes de engolir. A sensação é leve ou pesada?',
         options: [
-          { value: 'light',  label: 'Leve e limpo',   sub: 'passa rápido, como água aromatizada' },
-          { value: 'round',  label: 'Redondo',         sub: 'equilibrado, sedoso' },
-          { value: 'heavy',  label: 'Cremoso e denso', sub: 'preenche a boca, fica' },
+          { value: 'light',  label: 'Leve e limpo',    sub: 'passa rápido, como água aromatizada' },
+          { value: 'round',  label: 'Redondo',          sub: 'equilibrado, sedoso'                 },
+          { value: 'heavy',  label: 'Cremoso e denso',  sub: 'preenche a boca, fica'               },
         ],
       },
       {
-        id: 'sweetness',
-        prompt: 'Dulçor',
+        id: 'sweetness', prompt: 'Dulçor',
         question: 'Que tipo de doce você identifica?',
         hint: 'O tipo de doce revela muito sobre o processamento do café.',
         options: [
           { value: 'dark',  label: 'Escuro', sub: 'chocolate, caramelo, rapadura, melado' },
-          { value: 'light', label: 'Claro',  sub: 'frutas, mel, floral, açúcar' },
+          { value: 'light', label: 'Claro',  sub: 'frutas, mel, floral, açúcar'           },
         ],
       },
       {
-        id: 'fruit',
-        prompt: 'Fruta',
+        id: 'fruit', prompt: 'Fruta',
         question: 'Se sentiu fruta, qual família mais se aproxima?',
         hint: 'Não importa se é sutil — qual das opções ressoa mais?',
         options: [
-          { value: 'tropical', label: 'Tropical',        sub: 'abacaxi, manga, pitaya, banana' },
-          { value: 'stone',    label: 'Caroço',          sub: 'pêssego, ameixa, damasco, cereja' },
-          { value: 'citrus',   label: 'Cítrica',         sub: 'laranja, limão, tangerina' },
-          { value: 'none',     label: 'Não percebi fruta', sub: '' },
+          { value: 'tropical', label: 'Tropical',           sub: 'abacaxi, manga, pitaya, banana' },
+          { value: 'stone',    label: 'Caroço',              sub: 'pêssego, ameixa, damasco, cereja' },
+          { value: 'citrus',   label: 'Cítrica',             sub: 'laranja, limão, tangerina'     },
+          { value: 'none',     label: 'Não percebi fruta',   sub: ''                              },
         ],
       },
       {
-        id: 'finish',
-        prompt: 'Final',
+        id: 'finish', prompt: 'Final',
         question: 'Engole e conta até 8. Ainda tem sabor?',
         hint: 'O final é o tempo que o sabor persiste depois de engolir.',
         options: [
-          { value: 'short',  label: 'Curto',  sub: 'some antes de 3 segundos' },
-          { value: 'medium', label: 'Médio',  sub: '3 a 5 segundos' },
-          { value: 'long',   label: 'Longo',  sub: 'mais de 5 segundos, persistente' },
+          { value: 'short',  label: 'Curto',  sub: 'some antes de 3 segundos'            },
+          { value: 'medium', label: 'Médio',  sub: '3 a 5 segundos'                      },
+          { value: 'long',   label: 'Longo',  sub: 'mais de 5 segundos, persistente'     },
         ],
       },
       {
-        id: 'special',
-        prompt: 'Destaque',
+        id: 'special', prompt: 'Destaque',
         question: 'Algo que te surpreendeu?',
         hint: 'Uma nota que ficou na memória além do esperado.',
         options: [
-          { value: 'floral',  label: 'Floral',            sub: 'perfumado, delicado, jasmim' },
-          { value: 'wine',    label: 'Vinoso / fermentado', sub: 'expressivo, intenso, como vinho' },
-          { value: 'nutty',   label: 'Nozes / tostado',   sub: 'amendoim, avelã, torrado' },
-          { value: 'none',    label: 'Nada inesperado',   sub: 'o perfil já está completo' },
+          { value: 'floral', label: 'Floral',              sub: 'perfumado, delicado, jasmim'  },
+          { value: 'wine',   label: 'Vinoso / fermentado', sub: 'expressivo, intenso, como vinho' },
+          { value: 'nutty',  label: 'Nozes / tostado',     sub: 'amendoim, avelã, torrado'     },
+          { value: 'none',   label: 'Nada inesperado',     sub: 'o perfil já está completo'    },
         ],
       },
     ],
@@ -660,165 +623,188 @@ function app() {
       special:   { floral: 'Floral', wine: 'Vinoso', nutty: 'Nozes', none: '' },
     },
 
-    beans: [
-      {
-        id: 'deyvid',
-        name: 'Deyvid Oliveira',
-        variety: 'Catuaí 99',
-        region: 'Cerrado Mineiro · 1250m',
-        process: 'Natural Fermentado',
-        notes: ['rapadura', 'pêssego', 'flor de laranjeira'],
-        acidity: 4, sweetness: 5, body: 4,
-        tip: 'O pêssego aparece por volta de 55°C. A flor de laranjeira é mais aroma — cheire a xícara antes de beber. Tente o slurp para abrir as notas.'
-      },
-      {
-        id: 'talhao',
-        name: 'Nosso Talhão',
-        variety: 'Bourbon Amarelo',
-        region: 'Sul de Minas · 1100m',
-        process: 'Selvatech 72h',
-        notes: ['abacaxi', 'pitaya', 'banana', 'chocolate'],
-        acidity: 4, sweetness: 4, body: 4,
-        tip: 'As notas tropicais aparecem quente; o chocolate fica mais evidente quando esfria. Compare com o Deyvid — o Talhão é mais redondo pelo Bourbon.'
-      },
-    ],
-
     exercises: [
       {
-        id: 'temp-sweep',
-        category: 'Exercício 01',
+        id: 'temp-sweep', category: 'Exercício 01',
         name: 'Varredura de Temperatura',
         desc: 'Prove o mesmo café em 4 temperaturas. As notas do rótulo aparecem em uma janela específica — encontre ela.',
         steps: [
-          {
-            temp: '~70°C',
-            label: 'Muito quente',
-            hint: 'Foque só no aroma. Coloque o nariz na xícara antes de beber. O que você sente? Definição de sabor é difícil aqui — tudo bem.'
-          },
-          {
-            temp: '~55°C',
-            label: 'Quente',
-            hint: 'Aqui é onde as notas do rótulo costumam aparecer. Tome um gole e absorva ar pela lateral da boca ao mesmo tempo — o slurp. Espalha o café por todo o palato.'
-          },
-          {
-            temp: '~40°C',
-            label: 'Morno',
-            hint: 'A acidez fica mais clara, a doçura se afia. Onde você sente a acidez: ponta da língua = cítrico, laterais = maçã/fruta, fundo = intensidade.'
-          },
-          {
-            temp: '~25°C',
-            label: 'Frio',
-            hint: 'Um natural bem processado ainda é agradável aqui. O que sobrou? Ficou mais doce ou mais ácido? Como o final mudou em relação aos 55°C?'
-          },
-        ]
+          { temp: '~70°C', label: 'Muito quente', hint: 'Foque só no aroma. Coloque o nariz na xícara antes de beber. O que você sente? Definição de sabor é difícil aqui — tudo bem.' },
+          { temp: '~55°C', label: 'Quente', hint: 'Aqui é onde as notas do rótulo costumam aparecer. Tome um gole e absorva ar pela lateral da boca ao mesmo tempo — o slurp. Espalha o café por todo o palato.' },
+          { temp: '~40°C', label: 'Morno', hint: 'A acidez fica mais clara, a doçura se afia. Onde você sente a acidez: ponta da língua = cítrico, laterais = maçã/fruta, fundo = intensidade.' },
+          { temp: '~25°C', label: 'Frio', hint: 'Um natural bem processado ainda é agradável aqui. O que sobrou? Ficou mais doce ou mais ácido? Como o final mudou em relação aos 55°C?' },
+        ],
       },
       {
-        id: 'comparison',
-        category: 'Exercício 02',
-        name: 'Deyvid × Talhão',
-        desc: 'Prepare os dois com a mesma receita. Compare alternando goles a ~55°C. O contraste força o cérebro a nomear as diferenças.',
+        id: 'comparison', category: 'Exercício 02',
+        name: 'Comparação lado a lado',
+        desc: 'Prepare dois cafés com a mesma receita. Compare alternando goles a ~55°C. O contraste força o cérebro a nomear as diferenças.',
         steps: [
-          {
-            label: 'Qual é mais encorpado?',
-            hint: 'Corpo é textura na boca. Pense em: aquoso → sedoso → cremoso. O Talhão tende a ser mais redondo por ser Bourbon Amarelo; o Deyvid mais linear e limpo.'
-          },
-          {
-            label: 'Qual tem mais acidez?',
-            hint: 'Acidez não é azedo — é brilho, vivacidade. Onde você sente: ponta da língua, laterais, ou no final ao engolir? Uma é mais intensa; a outra é mais suave.'
-          },
-          {
-            label: 'O dulçor é "escuro" ou "claro"?',
-            hint: 'Dulçor escuro = chocolate, melado, rapadura. Dulçor claro = fruta, floral, mel. Compare os dois. Um não é melhor — são diferentes expressões do processamento.'
-          },
-          {
-            label: 'Qual tem o final mais longo?',
-            hint: 'Engole, fecha a boca, conta até 10. Ainda tem sabor? Qual café persiste mais? O que persiste no Deyvid em comparação ao Talhão?'
-          },
-        ]
+          { label: 'Qual é mais encorpado?', hint: 'Corpo é textura na boca. Pense em: aquoso → sedoso → cremoso. Qual dos dois preenche mais?' },
+          { label: 'Qual tem mais acidez?', hint: 'Acidez não é azedo — é brilho, vivacidade. Onde você sente: ponta da língua, laterais, ou no final ao engolir?' },
+          { label: 'O dulçor é "escuro" ou "claro"?', hint: 'Dulçor escuro = chocolate, melado, rapadura. Dulçor claro = fruta, floral, mel. Um não é melhor — são diferentes expressões.' },
+          { label: 'Qual tem o final mais longo?', hint: 'Engole, fecha a boca, conta até 10. Ainda tem sabor? Qual café persiste mais?' },
+        ],
       },
     ],
 
     techniques: [
-      {
-        title: 'O slurp',
-        body: 'Tome um gole e aspire ar pela lateral da boca ao mesmo tempo. Espalha o café por todo o palato e leva o aroma pelo retronasal — pelo fundo da garganta até o nariz. Faz diferença enorme. Pratique até virar automático.'
-      },
-      {
-        title: 'Ancoragem de referência',
-        body: 'Se você não consegue identificar "pêssego" no Deyvid, compre um pêssego e prove com atenção. Depois beba o café. O cérebro conecta a memória olfativa e a nota entra no lugar — para sempre.'
-      },
-      {
-        title: 'Shot antes do cappuccino',
-        body: 'Todo dia, antes de adicionar o leite, tome um gole do shot. Você começa a perceber o que o leite esconde e o que sobrevive até a xícara final. É a forma mais rápida de desenvolver vocabulário para espresso.'
-      },
-      {
-        title: 'Três temperaturas, sempre',
-        body: 'Nunca avalie um café só quente. Prove a ~70°C (aroma), ~55°C (notas), ~40°C (acidez + estrutura). O mesmo café conta histórias diferentes em cada janela.'
-      },
+      { title: 'O slurp', body: 'Tome um gole e aspire ar pela lateral da boca ao mesmo tempo. Espalha o café por todo o palato e leva o aroma pelo retronasal — pelo fundo da garganta até o nariz. Faz diferença enorme. Pratique até virar automático.' },
+      { title: 'Ancoragem de referência', body: 'Se você não consegue identificar "pêssego" em um café, compre um pêssego e prove com atenção. Depois beba o café. O cérebro conecta a memória olfativa e a nota entra no lugar — para sempre.' },
+      { title: 'Shot antes do cappuccino', body: 'Todo dia, antes de adicionar o leite, tome um gole do shot. Você começa a perceber o que o leite esconde e o que sobrevive até a xícara final. É a forma mais rápida de desenvolver vocabulário para espresso.' },
+      { title: 'Três temperaturas, sempre', body: 'Nunca avalie um café só quente. Prove a ~70°C (aroma), ~55°C (notas), ~40°C (acidez + estrutura). O mesmo café conta histórias diferentes em cada janela.' },
     ],
 
     tips: {
-      'special:floral': {
-        title: 'Floral é aroma antes de sabor',
-        body: 'Florais aparecem principalmente a ~70°C, antes do primeiro gole. Na próxima vez, cheire a xícara por 10 segundos antes de qualquer contato com a boca — e note a diferença entre o que você sente no nariz e o que sente na língua. São informações completamente distintas.',
-      },
-      'special:wine': {
-        title: 'Vinoso vem da fermentação',
-        body: 'Na próxima vez, separe um copo de vinho tinto leve — uma uva mais fina, como Pinot Noir — ao lado do café. Compare o aroma dos dois antes de beber qualquer um. Essa âncora olfativa torna a nota imediatamente reconhecível para sempre.',
-      },
-      'special:nutty': {
-        title: 'Tostado vem da torra, não do grão',
-        body: 'Notas de nozes e amendoim aparecem quando a torra é mais desenvolvida. Na próxima vez, esfregue alguns grãos de café cru entre os dedos e cheire — depois compare com o café pronto. A diferença que você sente é exatamente a torra agindo.',
-      },
-      'fruit:tropical': {
-        title: 'Frutas tropicais aparecem no aroma',
-        body: 'Abacaxi, pitaya e manga são compostos voláteis — evaporam rápido. Na próxima vez, cheire com intensidade a ~70°C antes de qualquer gole. Essa é a janela onde eles aparecem com mais força. Depois de engolir eles somem — se aparecerem no sabor também, é um café muito expressivo.',
-      },
-      'fruit:stone': {
-        title: 'A nota de pêssego tem temperatura certa',
-        body: 'Frutas de caroço aparecem com mais clareza a ~55°C — nem quente demais, nem frio. Tente provar um pêssego fresco hoje e beba o café logo depois. O cérebro vai conectar as duas memórias e a nota vai "encaixar" de vez.',
-      },
-      'fruit:citrus': {
-        title: 'Cítrico se sente nas laterais da língua',
-        body: 'Na próxima vez, preste atenção especificamente nas bordas da língua logo após o gole. É lá onde a acidez cítrica — laranja, limão — aparece. Diferente da acidez de maçã (malic), que é mais suave e fica mais no meio. A localização te diz o tipo.',
-      },
-      'fruit:none': {
-        title: 'O slurp abre o que passou despercebido',
-        body: 'Se a fruta não apareceu, tente o slurp na próxima vez: tome um gole e aspire ar pela lateral da boca ao mesmo tempo. Isso leva os aromáticos pelo retronasal — pelo fundo da garganta até o nariz — e revela notas que num gole comum simplesmente não chegam.',
-      },
-      'body:heavy': {
-        title: 'Corpo se percebe segurando, não passando',
-        body: 'Na próxima vez, segure o café na boca por 3 segundos antes de engolir. Mova a língua levemente de cima para baixo — você vai sentir a textura com muito mais definição do que num gole rápido. Corpo cremoso é quase como leite integral; leve é como água com sabor.',
-      },
-      'body:light': {
-        title: 'Corpo leve é uma característica, não falta',
-        body: 'Não é defeito — é o terroir. Cafés de altitudes altas, como o Zé Alexandre do Caparaó (1300m), tendem a ser mais leves e limpos. Quando você provar um café do Cerrado a 970m, o contraste de corpo vai ser imediato e te ensinar o que "corpo" realmente significa.',
-      },
-      'acidity:bright': {
-        title: 'Acidez ganha personalidade conforme esfria',
-        body: 'Na próxima vez, prove a mesma xícara a ~55°C e depois a ~40°C. O que era "vivo e brilhante" vai ganhar definição: você começa a identificar se é cítrico (ponta da língua), maçã/fruta (laterais) ou outra coisa. O resfriamento é um instrumento de análise.',
-      },
-      'acidity:low': {
-        title: 'Acidez baixa deixa o dulçor em foco',
-        body: 'Com pouca acidez no caminho, o dulçor fica completamente exposto. Na próxima vez, preste atenção específica no dulçor a ~40°C — é onde ele aparece com mais clareza e você consegue nomear o tipo: rapadura, mel, caramelo, frutas. Acidez baixa é uma janela para a doçura.',
-      },
-      'impact:fruity': {
-        title: 'Frutado no aroma ou no sabor — são coisas diferentes',
-        body: 'Na próxima vez, separe as duas experiências intencionalmente: cheire por 10 segundos antes de qualquer gole (aroma retronasale), depois tome um gole e note o que muda (sabor ortonasale). Um café pode ser muito frutado no nariz e discreto na boca — ou o contrário.',
-      },
-      'impact:cocoa': {
-        title: 'Qual chocolate exatamente?',
-        body: 'Na próxima vez, tente afinar: o chocolate é amargo — cacau 70%+, seco, intenso, um pouco adstringente — ou ao leite — cremoso, doce, redondo? Essa distinção simples começa a revelar a profundidade da torra e do processamento, e vai tornando seus registros muito mais precisos.',
-      },
+      'special:floral': { title: 'Floral é aroma antes de sabor', body: 'Florais aparecem principalmente a ~70°C, antes do primeiro gole. Na próxima vez, cheire a xícara por 10 segundos antes de qualquer contato com a boca — e note a diferença entre o que você sente no nariz e o que sente na língua. São informações completamente distintas.' },
+      'special:wine':   { title: 'Vinoso vem da fermentação', body: 'Na próxima vez, separe um copo de vinho tinto leve ao lado do café. Compare o aroma dos dois antes de beber qualquer um. Essa âncora olfativa torna a nota imediatamente reconhecível para sempre.' },
+      'special:nutty':  { title: 'Tostado vem da torra, não do grão', body: 'Notas de nozes e amendoim aparecem quando a torra é mais desenvolvida. Na próxima vez, esfregue alguns grãos de café cru entre os dedos e cheire — depois compare com o café pronto. A diferença que você sente é exatamente a torra agindo.' },
+      'fruit:tropical': { title: 'Frutas tropicais aparecem no aroma', body: 'Abacaxi, pitaya e manga são compostos voláteis — evaporam rápido. Na próxima vez, cheire com intensidade a ~70°C antes de qualquer gole. Essa é a janela onde eles aparecem com mais força.' },
+      'fruit:stone':    { title: 'A nota de pêssego tem temperatura certa', body: 'Frutas de caroço aparecem com mais clareza a ~55°C — nem quente demais, nem frio. Tente provar um pêssego fresco e beba o café logo depois. O cérebro vai conectar as duas memórias e a nota vai "encaixar" de vez.' },
+      'fruit:citrus':   { title: 'Cítrico se sente nas laterais da língua', body: 'Na próxima vez, preste atenção especificamente nas bordas da língua logo após o gole. É lá onde a acidez cítrica — laranja, limão — aparece. A localização te diz o tipo.' },
+      'fruit:none':     { title: 'O slurp abre o que passou despercebido', body: 'Se a fruta não apareceu, tente o slurp na próxima vez: tome um gole e aspire ar pela lateral da boca ao mesmo tempo. Isso leva os aromáticos pelo retronasal e revela notas que num gole comum simplesmente não chegam.' },
+      'body:heavy':     { title: 'Corpo se percebe segurando, não passando', body: 'Na próxima vez, segure o café na boca por 3 segundos antes de engolir. Mova a língua levemente de cima para baixo — você vai sentir a textura com muito mais definição do que num gole rápido.' },
+      'body:light':     { title: 'Corpo leve é uma característica, não falta', body: 'Não é defeito — é o terroir. Cafés de altitudes altas tendem a ser mais leves e limpos. Quando você provar um café do Cerrado a 970m, o contraste de corpo vai ser imediato e te ensinar o que "corpo" realmente significa.' },
+      'acidity:bright': { title: 'Acidez ganha personalidade conforme esfria', body: 'Na próxima vez, prove a mesma xícara a ~55°C e depois a ~40°C. O que era "vivo e brilhante" vai ganhar definição: você começa a identificar se é cítrico (ponta da língua), maçã/fruta (laterais) ou outra coisa.' },
+      'acidity:low':    { title: 'Acidez baixa deixa o dulçor em foco', body: 'Com pouca acidez no caminho, o dulçor fica completamente exposto. Na próxima vez, preste atenção específica no dulçor a ~40°C — é onde ele aparece com mais clareza e você consegue nomear o tipo: rapadura, mel, caramelo, frutas.' },
+      'impact:fruity':  { title: 'Frutado no aroma ou no sabor — são coisas diferentes', body: 'Na próxima vez, separe as duas experiências intencionalmente: cheire por 10 segundos antes de qualquer gole (aroma), depois tome um gole e note o que muda (sabor). Um café pode ser muito frutado no nariz e discreto na boca — ou o contrário.' },
+      'impact:cocoa':   { title: 'Qual chocolate exatamente?', body: 'Na próxima vez, tente afinar: o chocolate é amargo — cacau 70%+, seco, intenso — ou ao leite — cremoso, doce, redondo? Essa distinção simples começa a revelar a profundidade da torra e do processamento.' },
     },
 
-    init() {
-      const saved = localStorage.getItem('palate-v1');
-      if (saved) {
-        try { this.history = JSON.parse(saved); } catch(e) {}
+    // ── Auth ──────────────────────────────────────────────────────
+    async init() {
+      auth.onAuthStateChanged(async (firebaseUser) => {
+        if (firebaseUser) {
+          this.user = {
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || 'Usuário',
+            photo: firebaseUser.photoURL,
+          };
+          await Promise.all([this.loadHistory(), this.loadShelf()]);
+        } else {
+          this.user = null;
+          this.history = [];
+          this.shelf = [];
+        }
+        this.loading = false;
+      });
+    },
+
+    signIn() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(e => {
+        if (e.code === 'auth/popup-blocked') auth.signInWithRedirect(provider);
+      });
+    },
+
+    signOut() { auth.signOut(); },
+
+    // ── Data loading ──────────────────────────────────────────────
+    async loadHistory() {
+      const snap = await db.collection('users').doc(this.user.uid)
+        .collection('logs').orderBy('date', 'desc').get();
+      this.history = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+    },
+
+    async loadShelf() {
+      const snap = await db.collection('users').doc(this.user.uid)
+        .collection('shelf').orderBy('addedAt', 'desc').get();
+      this.shelf = snap.docs.map(d => d.data());
+    },
+
+    // ── Shelf ─────────────────────────────────────────────────────
+    async saveToShelf() {
+      if (!this.shelfForm.name.trim()) return;
+      this.shelfForm.fetching = true;
+      let info = {};
+      const storeVal = this.shelfForm.store.trim();
+      if (storeVal.startsWith('http')) {
+        info = (await this.fetchCoffeeInfo(storeVal)) || {};
+      }
+      const id = Date.now().toString();
+      const coffee = {
+        id,
+        name: this.shelfForm.name.trim(),
+        store: storeVal,
+        process: info.process || '',
+        notes: info.notes || [],
+        variety: info.variety || '',
+        region: info.region || '',
+        addedAt: new Date().toISOString(),
+      };
+      await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).set(coffee);
+      this.shelf.unshift(coffee);
+      this.shelfForm = { name: '', store: '', fetching: false };
+      this.addingCoffee = false;
+    },
+
+    async removeFromShelf(id) {
+      await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).delete();
+      this.shelf = this.shelf.filter(c => c.id !== id);
+    },
+
+    async fetchCoffeeInfo(url) {
+      try {
+        const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        const res = await fetch(proxy, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return null;
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const text = (doc.body?.textContent || '').toLowerCase();
+        const result = { process: '', notes: [], variety: '', region: '' };
+
+        const processMap = [
+          ['natural fermentado', 'Natural Fermentado'],
+          ['natural', 'Natural'], ['lavado', 'Lavado'], ['washed', 'Lavado'],
+          ['honey', 'Honey'], ['pulped natural', 'Pulped Natural'],
+          ['cereja descascado', 'Cereja Descascado'],
+        ];
+        for (const [term, label] of processMap) {
+          if (text.includes(term)) { result.process = label; break; }
+        }
+
+        const varietyList = ['bourbon amarelo', 'yellow bourbon', 'bourbon', 'catuaí 99', 'catuai 99', 'catuaí', 'catuai', 'mundo novo', 'acauã', 'catucaí', 'geisha', 'pacamara'];
+        for (const v of varietyList) {
+          if (text.includes(v)) {
+            result.variety = v.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            break;
+          }
+        }
+
+        const regionList = ['cerrado mineiro', 'sul de minas', 'mantiqueira de minas', 'mantiqueira', 'caparaó', 'mogiana', 'alta mogiana', 'chapada diamantina', 'norte pioneiro'];
+        for (const r of regionList) {
+          if (text.includes(r)) {
+            result.region = r.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            break;
+          }
+        }
+
+        const flavors = [
+          'chocolate', 'cacau', 'caramelo', 'baunilha', 'rapadura', 'mel', 'açúcar mascavo',
+          'pêssego', 'damasco', 'ameixa', 'cereja', 'frutas vermelhas', 'framboesa', 'morango',
+          'laranja', 'limão', 'tangerina', 'bergamota',
+          'abacaxi', 'manga', 'maracujá', 'pitaya', 'banana',
+          'floral', 'jasmim', 'rosa', 'hibisco', 'flor de laranjeira',
+          'nozes', 'amendoim', 'avelã', 'castanha',
+          'tâmara', 'figo', 'passas', 'frutas secas',
+        ];
+        const notasMatch = text.match(/notas[:\s]+([^.\n]{3,150})/);
+        const searchText = notasMatch ? notasMatch[1] : text;
+        result.notes = flavors.filter(f => searchText.includes(f)).slice(0, 6);
+
+        return result;
+      } catch(e) {
+        return null;
       }
     },
 
+    getStoreName(store) {
+      if (!store) return '';
+      try { if (store.startsWith('http')) return new URL(store).hostname.replace('www.', ''); } catch(e) {}
+      return store;
+    },
+
+    // ── Log ───────────────────────────────────────────────────────
     selectAnswer(questionId, value) {
       this.form.answers = { ...this.form.answers, [questionId]: value };
       const next = this.tastingStep + 1;
@@ -833,8 +819,7 @@ function app() {
       if (entry.answers && Object.keys(entry.answers).length > 0) {
         return Object.entries(entry.answers)
           .map(([k, v]) => this.answerLabels[k]?.[v])
-          .filter(Boolean)
-          .join(' · ');
+          .filter(Boolean).join(' · ');
       }
       if (entry.tags && entry.tags.length > 0) return entry.tags.join(' · ');
       return '';
@@ -842,11 +827,8 @@ function app() {
 
     getTip(answers) {
       const priority = [
-        `special:${answers.special}`,
-        `fruit:${answers.fruit}`,
-        `body:${answers.body}`,
-        `acidity:${answers.acidity}`,
-        `impact:${answers.impact}`,
+        `special:${answers.special}`, `fruit:${answers.fruit}`,
+        `body:${answers.body}`, `acidity:${answers.acidity}`, `impact:${answers.impact}`,
       ];
       for (const key of priority) {
         if (this.tips[key]) return this.tips[key];
@@ -854,40 +836,49 @@ function app() {
       return null;
     },
 
-    saveLog() {
-      if (!this.form.bean) return;
+    async saveLog() {
+      if (!this.form.bean || this.saving) return;
+      this.saving = true;
+      const shelfCoffee = this.shelf.find(c => c.id === this.form.bean);
+      const beanName = this.form.bean === 'outro'
+        ? (this.form.customBean || 'Outro')
+        : (shelfCoffee?.name || this.form.bean);
       const entry = {
-        id: Date.now(),
         date: new Date().toISOString(),
         bean: this.form.bean,
-        customBean: this.form.customBean,
+        beanName,
         method: this.form.method,
         answers: { ...this.form.answers },
         freeNotes: this.form.freeNotes,
       };
-      this.history.unshift(entry);
-      this.persist();
-      const tip = this.getTip(this.form.answers);
-      this.resetForm();
-      if (tip) {
-        this.tip = tip;
-        this.view = 'tip';
-      } else {
-        this.view = 'history';
+      try {
+        const docRef = await db.collection('users').doc(this.user.uid).collection('logs').add(entry);
+        entry.docId = docRef.id;
+        this.history.unshift(entry);
+        const tip = this.getTip(this.form.answers);
+        this.resetForm();
+        if (tip) { this.tip = tip; this.view = 'tip'; }
+        else { this.view = 'history'; }
+      } finally {
+        this.saving = false;
       }
     },
 
     resetForm() {
-      this.form = {
-        bean: '',
-        customBean: '',
-        method: 'v60',
-        answers: {},
-        freeNotes: '',
-      };
+      this.form = { bean: '', customBean: '', method: 'v60', answers: {}, freeNotes: '' };
       this.tastingStep = 0;
     },
 
+    async deleteEntry(idx) {
+      const entry = this.history[idx];
+      if (entry.docId) {
+        await db.collection('users').doc(this.user.uid).collection('logs').doc(entry.docId).delete();
+      }
+      this.history.splice(idx, 1);
+      this.openEntry = null;
+    },
+
+    // ── Exercises ─────────────────────────────────────────────────
     startExercise(ex) {
       this.exercise = ex;
       this.exerciseStep = 0;
@@ -895,43 +886,33 @@ function app() {
       this.view = 'exercise';
     },
 
-    finishExercise() {
+    async finishExercise() {
       const notes = this.stepNotes
         .map((n, i) => n ? `[${this.exercise.steps[i].label}]\n${n}` : null)
-        .filter(Boolean)
-        .join('\n\n');
+        .filter(Boolean).join('\n\n');
       const entry = {
-        id: Date.now(),
         date: new Date().toISOString(),
         bean: 'exercise',
+        beanName: this.exercise.name,
         exerciseName: this.exercise.name,
         method: this.exercise.id,
-        acidity: 0, sweetness: 0, body: 0,
-        tags: [],
+        answers: {},
         freeNotes: notes,
       };
+      const docRef = await db.collection('users').doc(this.user.uid).collection('logs').add(entry);
+      entry.docId = docRef.id;
       this.history.unshift(entry);
-      this.persist();
       this.exercise = null;
       this.stepNotes = [];
       this.view = 'history';
     },
 
-    deleteEntry(idx) {
-      this.history.splice(idx, 1);
-      this.openEntry = null;
-      this.persist();
-    },
-
-    persist() {
-      localStorage.setItem('palate-v1', JSON.stringify(this.history));
-    },
-
+    // ── Helpers ───────────────────────────────────────────────────
     getEntryTitle(entry) {
       if (entry.bean === 'exercise') return entry.exerciseName || 'Exercício';
+      if (entry.beanName) return entry.beanName;
       if (entry.bean === 'outro') return entry.customBean || 'Outro';
-      const bean = this.beans.find(b => b.id === entry.bean);
-      return bean ? bean.name : entry.bean;
+      return entry.bean;
     },
 
     getMethodLabel(id) {
@@ -939,15 +920,8 @@ function app() {
       return labels[id] || id;
     },
 
-    getTempLabel(id) {
-      const t = this.temps.find(t => t.id === id);
-      return t ? `${t.label} (${t.temp})` : id;
-    },
-
     formatDate(iso) {
-      return new Date(iso).toLocaleDateString('pt-BR', {
-        day: 'numeric', month: 'short', year: '2-digit'
-      });
+      return new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: '2-digit' });
     },
   }
 }
