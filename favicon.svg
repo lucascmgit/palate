@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Isometric Gaggia Classic Pro Evo -->
+  <!-- Cabinet body — three faces of isometric box -->
+  <!-- Top face (lighter orange) -->
+  <polygon points="32,6 52,17 32,28 12,17" fill="#FED7AA"/>
+  <!-- Left face (medium orange) -->
+  <polygon points="12,17 32,28 32,52 12,41" fill="#FB923C"/>
+  <!-- Right face (darker orange) -->
+  <polygon points="52,17 32,28 32,52 52,41" fill="#EA580C"/>
+
+  <!-- Top panel accent line -->
+  <polygon points="32,8 50,18 32,27 14,18" fill="none" stroke="#F97316" stroke-width="0.5"/>
+
+  <!-- Pressure gauge on right face -->
+  <ellipse cx="44" cy="33" rx="4" ry="2.5" fill="#FFF7ED" transform="skewX(-15) translate(6,0)"/>
+  <ellipse cx="44" cy="33" rx="3" ry="2" fill="white" transform="skewX(-15) translate(6,0)"/>
+  <line x1="43" y1="33" x2="45" y2="32" stroke="#EA580C" stroke-width="0.8" transform="skewX(-15) translate(6,0)"/>
+
+  <!-- Portafilter (left face, lower area) -->
+  <!-- Handle -->
+  <path d="M 14,38 Q 8,42 10,46" stroke="#92400E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <!-- Group head -->
+  <ellipse cx="17" cy="38" rx="4" ry="2" fill="#C2410C" transform="rotate(-10,17,38)"/>
+  <ellipse cx="17" cy="38" rx="3" ry="1.5" fill="#9A3412" transform="rotate(-10,17,38)"/>
+
+  <!-- Steam wand (right side) -->
+  <line x1="52" y1="22" x2="56" y2="28" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="28" x2="56" y2="38" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="56" cy="39" r="2" fill="#CBD5E1"/>
+  <!-- Steam wisps -->
+  <path d="M 54,14 Q 55,11 54,8" stroke="#CBD5E1" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M 57,15 Q 58,12 57,9" stroke="#CBD5E1" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Power button on top face -->
+  <circle cx="40" cy="20" r="2" fill="#92400E" transform="rotate(-30,40,20) translate(-4,2)"/>
+  <circle cx="40" cy="20" r="1.2" fill="#FED7AA" transform="rotate(-30,40,20) translate(-4,2)"/>
+</svg>
