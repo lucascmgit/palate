@@ -726,7 +726,7 @@ function app() {
         const id = Date.now().toString();
         const coffee = {
           id,
-          name: (info.name && info.name.length > 2) ? info.name : this.shelfForm.name.trim(),
+          name: ((info.name && info.name.length > 2) ? info.name : this.shelfForm.name.trim()).toLowerCase(),
           store: storeVal,
           process: info.process || '',
           notes: info.notes || [],
@@ -759,22 +759,23 @@ function app() {
         const text = (doc.body?.textContent || '').toLowerCase();
         const result = { name: '', process: '', notes: [], variety: '', region: '' };
 
-        // Product name: JSON-LD Product schema is most reliable (Shopify, WooCommerce all emit it)
-        const jsonLdScripts = doc.querySelectorAll('script[type="application/ld+json"]');
-        for (const script of jsonLdScripts) {
+        // Collect every candidate product name from the page
+        const candidates = [];
+        doc.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
           try {
-            const items = [].concat(JSON.parse(script.textContent));
-            for (const item of items) {
-              if (item['@type'] === 'Product' && item.name) { result.name = item.name.trim(); break; }
-            }
+            [].concat(JSON.parse(s.textContent)).forEach(item => {
+              if (item['@type'] === 'Product' && item.name) candidates.push(item.name.trim());
+            });
           } catch(e) {}
-          if (result.name) break;
-        }
-        // Fall back to OG title, stripping store suffix (e.g. "Deyvid – Five Roasters" → "Deyvid")
-        if (!result.name) {
-          const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
-          const stripped = ogTitle.split(/\s*[|–—]\s*/)[0].split(/\s*-\s*[A-Z].*$/)[0].trim();
-          if (stripped.length > 2 && stripped.length < 80) result.name = stripped;
+        });
+        const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+        if (ogTitle) candidates.push(ogTitle.split(/\s*[|–—]\s*/)[0].split(/\s*-\s*[A-Z]/)[0].trim());
+
+        // Pick the candidate most similar to what the user typed
+        if (candidates.length > 0) {
+          const typed = this.shelfForm.name.trim();
+          const best = candidates.reduce((a, b) => this.strSim(typed, b) > this.strSim(typed, a) ? b : a);
+          if (best.length > 2) result.name = best.toLowerCase();
         }
 
         const processMap = [
@@ -820,6 +821,28 @@ function app() {
       } catch(e) {
         return null;
       }
+    },
+
+    strSim(typed, candidate) {
+      const norm = s => s.toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+      const a = norm(typed), b = norm(candidate);
+      if (!a || !b) return 0;
+      if (b.includes(a) || a.includes(b)) return 1;
+      const lev = (x, y) => {
+        const d = Array.from({length: x.length+1}, (_, i) =>
+          Array.from({length: y.length+1}, (_, j) => i || j));
+        for (let i = 1; i <= x.length; i++)
+          for (let j = 1; j <= y.length; j++)
+            d[i][j] = x[i-1] === y[j-1] ? d[i-1][j-1]
+              : 1 + Math.min(d[i-1][j], d[i][j-1], d[i-1][j-1]);
+        return d[x.length][y.length];
+      };
+      const aw = a.split(' '), bw = b.split(' ');
+      return Math.max(...aw.flatMap(x => bw.map(y =>
+        1 - lev(x, y) / Math.max(x.length, y.length, 1)
+      )));
     },
 
     getStoreName(store) {
