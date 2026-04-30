@@ -43,8 +43,9 @@
   </script>
   <style>
     [x-cloak] { display: none !important; }
-    html, body { overflow-x: hidden; max-width: 100%; }
-    body { -webkit-tap-highlight-color: transparent; }
+    html { overflow-x: hidden; }
+    body { overflow-x: hidden; max-width: 100vw; word-break: break-word; -webkit-tap-highlight-color: transparent; }
+    * { box-sizing: border-box; min-width: 0; }
     .pb-nav { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
     .nav-h { height: calc(4rem + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
   </style>
@@ -758,11 +759,23 @@ function app() {
         const text = (doc.body?.textContent || '').toLowerCase();
         const result = { name: '', process: '', notes: [], variety: '', region: '' };
 
-        // Product name from h1 or og:title
-        const h1Text = doc.querySelector('h1')?.textContent?.trim() || '';
-        const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
-        const rawName = (h1Text || ogTitle.split('|')[0].split('–')[0].split('-')[0]).trim();
-        if (rawName.length > 2 && rawName.length < 80) result.name = rawName;
+        // Product name: JSON-LD Product schema is most reliable (Shopify, WooCommerce all emit it)
+        const jsonLdScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of jsonLdScripts) {
+          try {
+            const items = [].concat(JSON.parse(script.textContent));
+            for (const item of items) {
+              if (item['@type'] === 'Product' && item.name) { result.name = item.name.trim(); break; }
+            }
+          } catch(e) {}
+          if (result.name) break;
+        }
+        // Fall back to OG title, stripping store suffix (e.g. "Deyvid – Five Roasters" → "Deyvid")
+        if (!result.name) {
+          const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+          const stripped = ogTitle.split(/\s*[|–—]\s*/)[0].split(/\s*-\s*[A-Z].*$/)[0].trim();
+          if (stripped.length > 2 && stripped.length < 80) result.name = stripped;
+        }
 
         const processMap = [
           ['natural fermentado', 'Natural Fermentado'],
