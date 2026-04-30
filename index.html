@@ -43,6 +43,7 @@
   </script>
   <style>
     [x-cloak] { display: none !important; }
+    html, body { overflow-x: hidden; max-width: 100%; }
     body { -webkit-tap-highlight-color: transparent; }
     .pb-nav { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
     .nav-h { height: calc(4rem + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
@@ -50,7 +51,7 @@
 </head>
 <body class="bg-stone-50 text-stone-900" style="font-family: 'IBM Plex Sans', system-ui, sans-serif;">
 
-<div x-data="app()" x-init="init()" x-cloak>
+<div x-data="app()" x-init="init()" x-cloak class="w-full overflow-x-hidden">
 
   <!-- ─── Loading ───────────────────────────────────────────────── -->
   <div x-show="loading" class="min-h-screen flex flex-col items-center justify-center gap-4">
@@ -116,16 +117,16 @@
 
           <div x-show="shelf.length > 0" class="grid grid-cols-2 gap-2">
             <template x-for="coffee in shelf" :key="coffee.id">
-              <button @click="form.bean = coffee.id"
+              <button @click="form.bean = coffee.id; form.answers = {}; tastingStep = 0"
                 :class="form.bean === coffee.id
                   ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900'
                   : 'border-stone-200 text-stone-900/60'"
-                class="border p-4 text-left min-h-[56px] transition-colors duration-150">
-                <span class="text-sm font-medium block leading-snug" x-text="coffee.name"></span>
-                <span x-show="coffee.process" class="text-[11px] text-stone-900/40 mt-0.5 block" x-text="coffee.process"></span>
+                class="border p-4 text-left min-h-[56px] transition-colors duration-150 overflow-hidden">
+                <span class="text-sm font-medium block leading-snug truncate" x-text="coffee.name"></span>
+                <span x-show="coffee.process" class="text-[11px] text-stone-900/40 mt-0.5 block truncate" x-text="coffee.process"></span>
               </button>
             </template>
-            <button @click="form.bean = 'outro'"
+            <button @click="form.bean = 'outro'; form.answers = {}; tastingStep = 0"
               :class="form.bean === 'outro'
                 ? 'border-[#7C4B2A] bg-[#7C4B2A]/8 text-stone-900'
                 : 'border-stone-200 text-stone-900/60'"
@@ -243,9 +244,9 @@
         <div x-show="addingCoffee" class="border border-[#7C4B2A]/25 p-5 space-y-4 bg-[#7C4B2A]/5">
           <p class="text-[11px] tracking-widest uppercase text-stone-900/40">Novo café</p>
           <div class="space-y-3">
-            <input x-model="shelfForm.name" x-ref="shelfNameInput" type="text" placeholder="Nome do café…"
+            <input x-model="shelfForm.name" x-ref="shelfNameInput" type="text" placeholder="Nome do café…" autocomplete="off"
               class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 transition-colors">
-            <input x-model="shelfForm.store" type="text" placeholder="Link da loja ou nome (opcional)…"
+            <input x-model="shelfForm.store" type="url" inputmode="url" placeholder="Link da loja (opcional)…" autocomplete="off"
               class="w-full border border-stone-200 bg-transparent text-stone-900 text-sm px-4 py-3 outline-none focus:border-stone-900 placeholder:text-stone-900/30 transition-colors">
           </div>
           <div class="flex gap-3">
@@ -289,10 +290,10 @@
                 </div>
                 <a x-show="coffee.store && coffee.store.startsWith('http')"
                   :href="coffee.store" target="_blank" rel="noopener"
-                  class="text-xs text-stone-900/30 underline underline-offset-2 block"
+                  class="text-xs text-stone-900/30 underline underline-offset-2 block truncate"
                   x-text="getStoreName(coffee.store)"></a>
                 <span x-show="coffee.store && !coffee.store.startsWith('http')"
-                  class="text-xs text-stone-900/30 block" x-text="coffee.store"></span>
+                  class="text-xs text-stone-900/30 block truncate" x-text="coffee.store"></span>
               </div>
               <button @click="removeFromShelf(coffee.id)"
                 class="text-stone-900/20 hover:text-red-400 transition-colors duration-150 text-xl leading-none min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0">
@@ -441,9 +442,9 @@
           <template x-for="(entry, idx) in history" :key="entry.docId || entry.id">
             <div @click="openEntry = openEntry === idx ? null : idx"
               class="border-t border-stone-200 py-5 cursor-pointer">
-              <div class="flex items-start justify-between gap-4">
-                <div class="space-y-1 min-w-0">
-                  <h3 class="text-base font-normal leading-snug" x-text="getEntryTitle(entry)"></h3>
+              <div class="flex items-start justify-between gap-3">
+                <div class="space-y-1 min-w-0 flex-1">
+                  <h3 class="text-base font-normal leading-snug truncate" x-text="getEntryTitle(entry)"></h3>
                   <div class="flex items-center gap-3 flex-wrap">
                     <span class="text-[11px] uppercase tracking-wide text-stone-900/40"
                       x-text="getMethodLabel(entry.method)"></span>
@@ -451,9 +452,9 @@
                   </div>
                 </div>
                 <span x-show="entry.bean === 'exercise'"
-                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A] shrink-0 mt-0.5">exercício</span>
+                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A] shrink-0 mt-1">exercício</span>
                 <span x-show="entry.bean !== 'exercise' && entry.answers && entry.answers.impact"
-                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A]/70 shrink-0 mt-0.5"
+                  class="text-[10px] tracking-widest uppercase text-[#7C4B2A]/70 shrink-0 mt-1"
                   x-text="getAnswerLabel('impact', (entry.answers || {}).impact || '')"></span>
               </div>
               <p x-show="getAnswerSummary(entry)"
@@ -528,7 +529,7 @@ function app() {
 
     tabs: [
       { id: 'log',      label: 'Log'        },
-      { id: 'shelf',    label: 'Prateleira' },
+      { id: 'shelf',    label: 'Cafés'      },
       { id: 'train',    label: 'Treino'     },
       { id: 'history',  label: 'Histórico'  },
     ],
@@ -715,31 +716,36 @@ function app() {
     async saveToShelf() {
       if (!this.shelfForm.name.trim()) return;
       this.shelfForm.fetching = true;
-      let info = {};
-      const storeVal = this.shelfForm.store.trim();
-      if (storeVal.startsWith('http')) {
-        info = (await this.fetchCoffeeInfo(storeVal)) || {};
+      try {
+        let info = {};
+        const storeVal = this.shelfForm.store.trim();
+        if (storeVal.startsWith('http')) {
+          info = (await this.fetchCoffeeInfo(storeVal)) || {};
+        }
+        const id = Date.now().toString();
+        const coffee = {
+          id,
+          name: (info.name && info.name.length > 2) ? info.name : this.shelfForm.name.trim(),
+          store: storeVal,
+          process: info.process || '',
+          notes: info.notes || [],
+          variety: info.variety || '',
+          region: info.region || '',
+          addedAt: new Date().toISOString(),
+        };
+        await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).set(coffee);
+        this.shelf.unshift(coffee);
+        this.shelfForm = { name: '', store: '', fetching: false };
+        this.addingCoffee = false;
+      } catch(e) {
+        this.shelfForm.fetching = false;
       }
-      const id = Date.now().toString();
-      const coffee = {
-        id,
-        name: this.shelfForm.name.trim(),
-        store: storeVal,
-        process: info.process || '',
-        notes: info.notes || [],
-        variety: info.variety || '',
-        region: info.region || '',
-        addedAt: new Date().toISOString(),
-      };
-      await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).set(coffee);
-      this.shelf.unshift(coffee);
-      this.shelfForm = { name: '', store: '', fetching: false };
-      this.addingCoffee = false;
     },
 
     async removeFromShelf(id) {
       await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).delete();
       this.shelf = this.shelf.filter(c => c.id !== id);
+      if (this.form.bean === id) { this.form.bean = ''; this.form.answers = {}; this.tastingStep = 0; }
     },
 
     async fetchCoffeeInfo(url) {
@@ -750,7 +756,13 @@ function app() {
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const text = (doc.body?.textContent || '').toLowerCase();
-        const result = { process: '', notes: [], variety: '', region: '' };
+        const result = { name: '', process: '', notes: [], variety: '', region: '' };
+
+        // Product name from h1 or og:title
+        const h1Text = doc.querySelector('h1')?.textContent?.trim() || '';
+        const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+        const rawName = (h1Text || ogTitle.split('|')[0].split('–')[0].split('-')[0]).trim();
+        if (rawName.length > 2 && rawName.length < 80) result.name = rawName;
 
         const processMap = [
           ['natural fermentado', 'Natural Fermentado'],
