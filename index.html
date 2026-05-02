@@ -43,18 +43,23 @@
   </script>
   <style>
     [x-cloak] { display: none !important; }
-    /* overflow-x: clip hard-clips without creating a scroll container,
-       so position:fixed elements stay viewport-relative on iOS Safari */
-    html { overflow-x: clip; max-width: 100%; }
-    body { width: 100%; max-width: 100vw; overflow-x: hidden; word-break: break-word; -webkit-tap-highlight-color: transparent; }
+    /* iOS Safari standalone (webapp) overflow guards.
+       Using % (not vw) avoids notch/safe-area slack on iPhone.
+       overflow-wrap:anywhere is Safari-friendly (word-break:break-word is non-standard). */
+    html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+    body { -webkit-tap-highlight-color: transparent; overflow-wrap: anywhere; }
     *, ::before, ::after { box-sizing: border-box; min-width: 0; }
+    /* App root is the real layout container; sticky/fixed children scope here. */
+    #app-root { width: 100%; max-width: 100%; overflow-x: hidden; position: relative; }
     .pb-nav { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
     .nav-h { height: calc(4rem + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+    /* Bottom nav must hug the visual viewport — fixed elements ignore ancestor overflow. */
+    .nav-fixed { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; max-width: 100%; }
   </style>
 </head>
 <body class="bg-stone-50 text-stone-900" style="font-family: 'IBM Plex Sans', system-ui, sans-serif;">
 
-<div x-data="app()" x-init="init()" x-cloak class="w-full overflow-x-hidden">
+<div id="app-root" x-data="app()" x-init="init()" x-cloak class="w-full overflow-x-hidden">
 
   <!-- ─── Loading ───────────────────────────────────────────────── -->
   <div x-show="loading" class="min-h-screen flex flex-col items-center justify-center gap-4">
@@ -283,14 +288,35 @@
                     class="text-[10px] tracking-widest uppercase bg-[#7C4B2A]/10 text-[#7C4B2A] px-2 py-0.5 shrink-0"
                     x-text="coffee.process"></span>
                 </div>
-                <p x-show="coffee.variety || coffee.region"
+                <p x-show="coffee.variety || coffee.region || coffee.altitude"
                   class="text-xs text-stone-900/40"
-                  x-text="[coffee.variety, coffee.region].filter(Boolean).join(' · ')"></p>
+                  x-text="[coffee.variety, coffee.region, coffee.altitude].filter(Boolean).join(' · ')"></p>
+                <p x-show="coffee.producer || coffee.farm"
+                  class="text-xs text-stone-900/35"
+                  x-text="[coffee.producer, coffee.farm].filter(Boolean).join(' · ')"></p>
                 <div x-show="coffee.notes && coffee.notes.length > 0" class="flex flex-wrap gap-1">
                   <template x-for="note in (coffee.notes || [])" :key="note">
                     <span class="text-[11px] px-2 py-0.5 border border-stone-200 text-stone-900/60" x-text="note"></span>
                   </template>
                 </div>
+                <div x-show="coffee.grades && (coffee.grades.acidity || coffee.grades.sweetness || coffee.grades.body)"
+                  class="flex flex-wrap gap-3 pt-0.5">
+                  <span x-show="coffee.grades && coffee.grades.acidity"
+                    class="text-[10px] tracking-wider uppercase text-stone-900/45">
+                    acidez <span class="tabular-nums text-stone-900/70" x-text="(coffee.grades||{}).acidity + '/5'"></span>
+                  </span>
+                  <span x-show="coffee.grades && coffee.grades.sweetness"
+                    class="text-[10px] tracking-wider uppercase text-stone-900/45">
+                    doçura <span class="tabular-nums text-stone-900/70" x-text="(coffee.grades||{}).sweetness + '/5'"></span>
+                  </span>
+                  <span x-show="coffee.grades && coffee.grades.body"
+                    class="text-[10px] tracking-wider uppercase text-stone-900/45">
+                    corpo <span class="tabular-nums text-stone-900/70" x-text="(coffee.grades||{}).body + '/5'"></span>
+                  </span>
+                </div>
+                <p x-show="coffee.score"
+                  class="text-[10px] tracking-wider uppercase text-stone-900/35"
+                  x-text="coffee.score + ' pontos'"></p>
                 <a x-show="coffee.store && coffee.store.startsWith('http')"
                   :href="coffee.store" target="_blank" rel="noopener"
                   class="text-xs text-stone-900/30 underline underline-offset-2 block truncate"
@@ -493,7 +519,7 @@
 
     <!-- Bottom Nav -->
     <nav x-show="view !== 'exercise' && view !== 'tip'"
-      class="fixed bottom-0 left-0 right-0 z-20 nav-h bg-stone-50 border-t border-stone-200">
+      class="nav-fixed z-20 nav-h bg-stone-50 border-t border-stone-200">
       <div class="grid grid-cols-4 h-16">
         <template x-for="tab in tabs" :key="tab.id">
           <button @click="view = tab.id"
@@ -734,6 +760,11 @@ function app() {
           notes: info.notes || [],
           variety: info.variety || '',
           region: info.region || '',
+          producer: info.producer || '',
+          farm: info.farm || '',
+          altitude: info.altitude || '',
+          score: info.score || '',
+          grades: info.grades || { acidity: '', sweetness: '', body: '' },
           addedAt: new Date().toISOString(),
         };
         await db.collection('users').doc(this.user.uid).collection('shelf').doc(id).set(coffee);
@@ -758,15 +789,25 @@ function app() {
       const first = await this.fetchCoffeeDoc(url);
       if (!first) return null;
 
-      let best = this.extractCoffeeInfo(first.doc, typed);
-      let bestUrl = first.url;
-      const urlsToTry = [
+      // If the user gave a real product URL, extract directly.
+      // Otherwise (homepage/collection), only use it to resolve to a product page.
+      const isProduct = this.looksLikeProductUrl(first.url) && this.hasProductDescription(first.doc);
+
+      if (isProduct) {
+        return this.extractFromProduct(first.doc, first.url, typed);
+      }
+
+      // Resolve to a real product page from a non-product URL.
+      const candidates = [
         this.findBestCoffeeLink(first.doc, typed, first.url),
         ...this.buildSearchUrls(first.url, typed),
       ].filter(Boolean);
       const seen = new Set([first.url.replace(/\/$/, '')]);
 
-      for (const candidateUrl of urlsToTry) {
+      let best = null;
+      let bestScore = 0;
+
+      for (const candidateUrl of candidates) {
         const key = candidateUrl.replace(/\/$/, '');
         if (seen.has(key)) continue;
         seen.add(key);
@@ -774,30 +815,244 @@ function app() {
         const page = await this.fetchCoffeeDoc(candidateUrl);
         if (!page) continue;
 
-        let extracted = this.extractCoffeeInfo(page.doc, typed);
-        let extractedUrl = page.url;
-        const productUrl = this.findBestCoffeeLink(page.doc, typed, page.url);
-
-        if (productUrl && productUrl.replace(/\/$/, '') !== key && extracted.matchScore < 0.72) {
-          const productPage = await this.fetchCoffeeDoc(productUrl);
-          if (productPage) {
-            const productExtracted = this.extractCoffeeInfo(productPage.doc, typed);
-            if (this.isBetterCoffeeInfo(productExtracted, extracted)) {
-              extracted = productExtracted;
-              extractedUrl = productPage.url;
-            }
+        // If the candidate is a search/collection page, dive one level deeper.
+        let productDoc = page.doc;
+        let productUrl = page.url;
+        if (!this.hasProductDescription(productDoc)) {
+          const inner = this.findBestCoffeeLink(productDoc, typed, productUrl);
+          if (inner && !seen.has(inner.replace(/\/$/, ''))) {
+            seen.add(inner.replace(/\/$/, ''));
+            const innerPage = await this.fetchCoffeeDoc(inner);
+            if (innerPage) { productDoc = innerPage.doc; productUrl = innerPage.url; }
           }
         }
+        if (!this.hasProductDescription(productDoc)) continue;
 
-        if (this.isBetterCoffeeInfo(extracted, best)) {
-          best = extracted;
-          bestUrl = extractedUrl;
-        }
-
-        if (best.matchScore >= 0.72 && (best.process || best.notes.length || best.variety || best.region)) break;
+        const extracted = this.extractFromProduct(productDoc, productUrl, typed);
+        const score = (extracted._matchScore || 0) + (extracted.process ? 0.05 : 0) + (extracted.notes.length ? 0.05 : 0);
+        if (!best || score > bestScore) { best = extracted; bestScore = score; }
+        if (extracted._matchScore >= 0.85) break;
       }
 
-      return this.cleanCoffeeInfo(best, best.matchScore >= 0.35 || this.looksLikeProductUrl(bestUrl));
+      return best;
+    },
+
+    hasProductDescription(doc) {
+      return !!doc.querySelector('[data-store^="product-description"], .product-description, .user-content.description, [itemprop="description"]');
+    },
+
+    extractFromProduct(doc, url, typed) {
+      const container = doc.querySelector('[data-store^="product-description"], .product-description, .user-content.description, [itemprop="description"]');
+      const descText = this.cleanText(container ? container.textContent : '');
+      const title = this.getProductTitle(doc);
+      const matchScore = this.strSim(typed, title || '');
+
+      const variety  = this.extractVariety(descText);
+      const process  = this.extractProcess(descText);
+      const region   = this.extractRegion(descText);
+      const altitude = this.extractAltitude(descText);
+      const score    = this.extractScore(descText);
+      const farm     = this.extractFarm(descText);
+      const producer = this.extractProducer(descText);
+      const notes    = this.extractNotes(descText);
+      const grades   = this.extractGrades(descText);
+
+      return {
+        name: (title || '').toLowerCase(),
+        process, variety, region, altitude, score, farm, producer,
+        notes, grades,
+        _matchScore: matchScore,
+      };
+    },
+
+    cleanText(value) {
+      return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    },
+
+    getProductTitle(doc) {
+      const candidates = [];
+      const add = v => { const t = this.cleanText(v); if (t && !candidates.includes(t)) candidates.push(t); };
+
+      // Tiendanube usually exposes the title via og:title or h1
+      doc.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
+        try {
+          const visit = v => {
+            if (Array.isArray(v)) return v.forEach(visit);
+            if (!v || typeof v !== 'object') return;
+            const types = [].concat(v['@type'] || []).map(t => String(t).toLowerCase());
+            if (types.includes('product') && v.name) add(v.name);
+            Object.values(v).forEach(visit);
+          };
+          visit(JSON.parse(s.textContent));
+        } catch(e) {}
+      });
+      const og = doc.querySelector('meta[property="og:title"]');
+      if (og) add(og.getAttribute('content') || '');
+      const h1 = doc.querySelector('h1, [itemprop="name"], .product-name, .product__title, .product_title');
+      if (h1) add(h1.textContent);
+      const t = doc.querySelector('title');
+      if (t) add(t.textContent);
+
+      // Strip "- Comprar em ...", "| Site", "(Grão, 250g)" etc.
+      const cleaned = candidates.map(c => c
+        .replace(/\s*[-|–—]\s*comprar.*$/i, '')
+        .replace(/\s*\([^)]+\)\s*$/, '')
+        .replace(/\s*[-|–—]\s*[^-|–—]+$/, m => /(roasters|cafes?|store|shop|loja)/i.test(m) ? '' : m)
+        .replace(/\s+/g, ' ')
+        .trim()
+      ).filter(Boolean);
+
+      return cleaned[0] || candidates[0] || '';
+    },
+
+    // ── Field extractors (run on description container only) ─────
+    extractVariety(text) {
+      const t = text;
+      const trigger = /\bvariedades?[:\s]+([A-ZÁÉÍÓÚÂÊÔÃÕÇa-záéíóúâêôãõç0-9 ]{2,80})/.exec(t);
+      const known = [
+        'Bourbon Amarelo', 'Bourbon Vermelho', 'Yellow Bourbon', 'Bourbon',
+        'Catuaí Vermelho', 'Catuaí Amarelo', 'Catuaí 99', 'Catuaí',
+        'Mundo Novo', 'Topázio', 'Topazio', 'Acauã', 'Acaua', 'Catucaí', 'Catucai',
+        'Geisha', 'Gesha', 'Pacamara', 'Arara', 'Ouro Verde', 'Iapar', 'IAC',
+      ];
+      const boundaryRe = name => new RegExp(
+        '(^|[^A-Za-zÀ-ÿ])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-zÀ-ÿ])',
+        'i'
+      );
+      const findIn = (segment) => {
+        for (const v of known) if (boundaryRe(v).test(segment)) return v;
+        return '';
+      };
+      if (trigger) { const hit = findIn(trigger[1]); if (hit) return hit; }
+      const idx = t.search(/\bvariedade/i);
+      if (idx >= 0) { const hit = findIn(t.slice(idx, idx + 200)); if (hit) return hit; }
+      return findIn(t);
+    },
+
+    extractProcess(text) {
+      const order = [
+        ['cereja descascado', 'Cereja Descascado'],
+        ['pulped natural', 'Pulped Natural'],
+        ['natural fermentado', 'Natural Fermentado'],
+        ['anaer[oó]bico', 'Anaeróbico'],
+        ['fermenta(?:do|o|ç[aã]o)', 'Fermentado'],
+        ['honey', 'Honey'],
+        ['lavado', 'Lavado'], ['washed', 'Lavado'],
+        ['natural', 'Natural'],
+      ];
+      // Prefer the segment around "processado" / "método" / "processo".
+      // Search whole description as fallback, but ignore "natural" if it
+      // shows up only in unrelated phrasing like "doçura natural".
+      const trigger = /(processad[oa]|m[eé]todo|processo)[^.]{0,160}/i.exec(text);
+      const seg = trigger ? trigger[0] : '';
+      for (const [pat, label] of order) {
+        if (new RegExp('(^|[^A-Za-zÀ-ÿ])' + pat + '($|[^A-Za-zÀ-ÿ])', 'i').test(seg)) return label;
+      }
+      // Fallback whole-text scan, but skip the bare "natural" keyword to
+      // avoid false positives like "doçura natural".
+      for (const [pat, label] of order) {
+        if (pat === 'natural') continue;
+        if (new RegExp('(^|[^A-Za-zÀ-ÿ])' + pat + '($|[^A-Za-zÀ-ÿ])', 'i').test(text)) return label;
+      }
+      return '';
+    },
+
+    extractRegion(text) {
+      const known = [
+        'Cerrado Mineiro', 'Sul de Minas', 'Mantiqueira de Minas', 'Mantiqueira',
+        'Caparaó', 'Caparao', 'Mogiana', 'Alta Mogiana', 'Chapada Diamantina',
+        'Norte Pioneiro', 'Matas de Minas', 'Espírito Santo', 'Espirito Santo',
+      ];
+      // \b doesn't behave well around accented letters in JS regex,
+      // so we use explicit non-letter lookbehind/ahead.
+      const boundaryRe = name => new RegExp(
+        '(^|[^A-Za-zÀ-ÿ])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-zÀ-ÿ])',
+        'i'
+      );
+      const trigger = /(no |na |em |do |da |regi[aã]o\s+d[oa]?\s+|terroir\s+d[oa]?\s+)([A-ZÁÉÍÓÚÂÊÔÃÕÇ][^.,;()]{2,80})/g;
+      const candidates = [];
+      let m;
+      while ((m = trigger.exec(text)) !== null) candidates.push(m[2]);
+      for (const c of candidates) {
+        for (const r of known) {
+          if (boundaryRe(r).test(c)) return r;
+        }
+      }
+      for (const r of known) {
+        if (boundaryRe(r).test(text)) return r;
+      }
+      return '';
+    },
+
+    extractAltitude(text) {
+      const m = /(\d[\d.,]{2,5})\s*(?:metros|m\b)\s*(?:de\s+altitude)?/i.exec(text);
+      if (!m) return '';
+      const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+      if (!n || n < 400 || n > 3000) return '';
+      return n + 'm';
+    },
+
+    extractScore(text) {
+      const m = /(\d{2}(?:[.,]\d)?)\s*pontos?\b/i.exec(text);
+      return m ? m[1].replace(',', '.') : '';
+    },
+
+    extractFarm(text) {
+      const m = /\b(Fazenda|S[ií]tio|Faz\.)\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ][^.,;()–—]{2,60})/.exec(text);
+      if (!m) return '';
+      const kind = /sitio/i.test(m[1].normalize('NFD').replace(/[\u0300-\u036f]/g,'')) ? 'Sítio' : 'Fazenda';
+      return (kind + ' ' + m[2]).replace(/\s+/g, ' ').replace(/\s+(MG|SP|ES|BA|PR|RJ)$/i, '').trim();
+    },
+
+    extractProducer(text) {
+      const m = /\b(?:Produzido por|produtor[a]?)\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){1,3})/.exec(text);
+      return m ? m[1].trim() : '';
+    },
+
+    extractNotes(text) {
+      const dictionary = [
+        'chocolate', 'cacau', 'caramelo', 'caramelo salgado', 'baunilha', 'rapadura', 'mel', 'açúcar mascavo',
+        'brownie', 'mingau de milho', 'biscoito', 'pão de mel',
+        'pêssego', 'damasco', 'ameixa', 'cereja', 'frutas vermelhas', 'framboesa', 'morango', 'amora',
+        'laranja', 'limão', 'tangerina', 'bergamota', 'lima', 'frutas cítricas',
+        'abacaxi', 'manga', 'maracujá', 'pitaya', 'banana', 'banana passa',
+        'floral', 'jasmim', 'rosa', 'hibisco', 'flor de laranjeira',
+        'nozes', 'amendoim', 'avelã', 'castanha', 'amêndoa',
+        'tâmara', 'figo', 'passas', 'frutas secas', 'uva passa',
+        'vinho', 'vinoso',
+      ];
+      // Look only within "notas..." / "perfil sensorial..." segments
+      const segments = [];
+      const reSeg = /(?:notas?|perfil sensorial|destacam[\s-]se(?:\s+notas?)?|aromas? d[ea])[:\s]+([^.•\n]{3,260})/gi;
+      let m;
+      while ((m = reSeg.exec(text)) !== null) segments.push(m[1]);
+      const haystack = (segments.length ? segments.join(' , ') : '').toLowerCase();
+      if (!haystack) return [];
+      const found = [];
+      for (const flav of dictionary) {
+        const norm = flav.toLowerCase();
+        const re = new RegExp('(^|[^a-záéíóúâêôãõç])' + norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-záéíóúâêôãõç])', 'i');
+        if (re.test(haystack) && !found.includes(flav)) found.push(flav);
+      }
+      // Drop subsumed terms (keep "caramelo salgado", drop bare "caramelo" etc.)
+      const final = found.filter(a => !found.some(b => b !== a && b.includes(a) && b.length > a.length));
+      return final.slice(0, 6);
+    },
+
+    extractGrades(text) {
+      const grade = (label) => {
+        const re = new RegExp(label + '[^()\\n]{0,60}\\((\\d)\\s*\\/\\s*5\\)', 'i');
+        const m = re.exec(text);
+        return m ? m[1] : '';
+      };
+      return {
+        acidity:   grade('acidez'),
+        sweetness: grade('do[cç]ura'),
+        body:      grade('corpo'),
+      };
     },
 
     async fetchCoffeeDoc(url) {
@@ -815,103 +1070,6 @@ function app() {
       } finally {
         if (timeout) clearTimeout(timeout);
       }
-    },
-
-    extractCoffeeInfo(doc, typed) {
-      const text = this.norm(doc.body?.textContent || '');
-      const result = { name: '', process: '', notes: [], variety: '', region: '', matchScore: 0 };
-      const candidates = this.getCoffeeNameCandidates(doc);
-
-      for (const candidate of candidates) {
-        const score = this.strSim(typed, candidate);
-        if (score > result.matchScore) {
-          result.matchScore = score;
-          result.name = candidate.trim();
-        }
-      }
-      if (result.matchScore < 0.35 || result.name.length <= 2) result.name = '';
-      else result.name = result.name.toLowerCase();
-
-      const processMap = [
-        ['natural fermentado', 'Natural Fermentado'],
-        ['natural anaerobico', 'Natural Anaeróbico'], ['anaerobico', 'Anaeróbico'],
-        ['natural', 'Natural'], ['lavado', 'Lavado'], ['washed', 'Lavado'],
-        ['honey', 'Honey'], ['pulped natural', 'Pulped Natural'],
-        ['cereja descascado', 'Cereja Descascado'],
-      ];
-      for (const [term, label] of processMap) {
-        if (text.includes(term)) { result.process = label; break; }
-      }
-
-      const varietyList = ['bourbon amarelo', 'yellow bourbon', 'bourbon', 'catuaí 99', 'catuai 99', 'catuaí', 'catuai', 'mundo novo', 'acauã', 'acuã', 'catucaí', 'geisha', 'gesha', 'pacamara', 'arara'];
-      for (const v of varietyList) {
-        if (text.includes(this.norm(v))) {
-          result.variety = v.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          break;
-        }
-      }
-
-      const regionList = ['cerrado mineiro', 'sul de minas', 'mantiqueira de minas', 'mantiqueira', 'caparaó', 'caparao', 'mogiana', 'alta mogiana', 'chapada diamantina', 'norte pioneiro'];
-      for (const r of regionList) {
-        if (text.includes(this.norm(r))) {
-          result.region = r.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          break;
-        }
-      }
-
-      const flavors = [
-        'chocolate', 'cacau', 'caramelo', 'baunilha', 'rapadura', 'mel', 'açúcar mascavo',
-        'pêssego', 'damasco', 'ameixa', 'cereja', 'frutas vermelhas', 'framboesa', 'morango',
-        'laranja', 'limão', 'tangerina', 'bergamota',
-        'abacaxi', 'manga', 'maracujá', 'pitaya', 'banana',
-        'floral', 'jasmim', 'rosa', 'hibisco', 'flor de laranjeira',
-        'nozes', 'amendoim', 'avelã', 'castanha',
-        'tâmara', 'figo', 'passas', 'frutas secas',
-      ];
-      const notasMatch = text.match(/notas?[:\s]+([^.\n]{3,180})/);
-      const searchText = notasMatch ? notasMatch[1] : text;
-      result.notes = flavors.filter(f => searchText.includes(this.norm(f))).slice(0, 6);
-
-      return result;
-    },
-
-    getCoffeeNameCandidates(doc) {
-      const candidates = [];
-      const add = value => this.titleCandidateParts(value || '').forEach(part => {
-        if (part.length > 2 && part.length < 120 && !candidates.includes(part)) candidates.push(part);
-      });
-      const visit = value => {
-        if (Array.isArray(value)) return value.forEach(visit);
-        if (!value || typeof value !== 'object') return;
-        const types = [].concat(value['@type'] || []).map(t => String(t).toLowerCase());
-        if (types.includes('product') && value.name) add(value.name);
-        Object.values(value).forEach(visit);
-      };
-
-      doc.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
-        try { visit(JSON.parse(script.textContent)); } catch(e) {}
-      });
-
-      [
-        'meta[property="og:title"]', 'meta[name="twitter:title"]',
-        'meta[itemprop="name"]', 'title',
-      ].forEach(sel => {
-        const el = doc.querySelector(sel);
-        add(el?.getAttribute?.('content') || el?.textContent || '');
-      });
-
-      doc.querySelectorAll('h1, [itemprop="name"], .product-title, .product__title, .product_title').forEach(el => add(el.textContent));
-      return candidates;
-    },
-
-    titleCandidateParts(value) {
-      const clean = String(value)
-        .replace(/\s+/g, ' ')
-        .replace(/\b(comprar|caf[eé] especial em gr[aã]os|caf[eé] em gr[aã]os|caf[eé] especial|250g|500g|1kg)\b/ig, ' ')
-        .trim();
-      return [clean, ...clean.split(/\s*[|–—]\s*|\s+-\s+/)]
-        .map(part => part.replace(/\s+/g, ' ').trim())
-        .filter(Boolean);
     },
 
     findBestCoffeeLink(doc, typed, baseUrl) {
@@ -971,23 +1129,6 @@ function app() {
       } catch(e) {
         return false;
       }
-    },
-
-    isBetterCoffeeInfo(next, current) {
-      const richness = info => (info.name ? 2 : 0) + (info.process ? 1 : 0) + info.notes.length + (info.variety ? 1 : 0) + (info.region ? 1 : 0);
-      if (!current) return true;
-      if (next.matchScore > current.matchScore + 0.08) return true;
-      return next.matchScore >= current.matchScore - 0.05 && richness(next) > richness(current);
-    },
-
-    cleanCoffeeInfo(info, keepDetails) {
-      return {
-        name: info.name || '',
-        process: keepDetails ? info.process : '',
-        notes: keepDetails ? info.notes : [],
-        variety: keepDetails ? info.variety : '',
-        region: keepDetails ? info.region : '',
-      };
     },
 
     norm(value) {
